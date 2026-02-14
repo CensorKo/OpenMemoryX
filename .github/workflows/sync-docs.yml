@@ -3,10 +3,11 @@ name: Sync API Docs
 on:
   push:
     branches: [main]
+    # SDK 代码变更时触发文档更新
     paths:
-      - 'app/routers/**'
-      - 'app/models/**'
-      - 'app/main.py'
+      - 'sdk/**/*.py'
+      - 'memoryx/**/*.py'
+      - '**.md'
   workflow_dispatch:
 
 jobs:
