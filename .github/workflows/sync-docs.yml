@@ -1,0 +1,54 @@
+name: Sync API Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/routers/**'
+      - 'app/models/**'
+      - 'app/main.py'
+  workflow_dispatch:
+
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout MemoryX API
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate OpenAPI
+        run: |
+          python3 -c "
+import sys
+sys.path.insert(0, '.')
+import os
+os.environ['DATABASE_URL'] = 'postgresql://localhost/test'
+os.environ['SECRET_KEY'] = 'test-secret'
+os.environ['REDIS_URL'] = 'redis://localhost:6379'
+from app.main import app
+import json
+openapi = app.openapi()
+json.dump(openapi, open('openapi.json', 'w'), indent=2, ensure_ascii=False)
+print('Generated openapi.json')
+" || echo '{"openapi":"3.0.0","info":{"title":"MemoryX API","version":"1.0.0"}}' > openapi.json
+
+      - name: Checkout Docs Repository
+        uses: actions/checkout@v4
+        with:
+          repository: t0ken-ai/docs
+          path: docs-repo
+          token: ${{ secrets.AUTO_DOCS }}
+
+      - name: Sync OpenAPI to Docs
+        run: |
+          cp openapi.json docs-repo/
+          cd docs-repo
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add openapi.json
+          git diff --staged --quiet || (git commit -m "auto: sync API docs from memoryx-api" && git push)
