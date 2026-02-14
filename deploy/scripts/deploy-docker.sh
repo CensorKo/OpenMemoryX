@@ -1,6 +1,6 @@
 #!/bin/bash
-# MemoryX Docker 部署脚本
-# 用法: ./deploy.sh [release|alpha]
+# MemoryX Docker 部署脚本 - 支持生产/测试环境
+# 用法: ./deploy-docker.sh [release|alpha]
 
 set -e
 
@@ -37,8 +37,6 @@ backup_current() {
     log "Creating backup..."
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     docker save $IMAGE > "$BACKUP_DIR/image_$TIMESTAMP.tar" 2>/dev/null || true
-    
-    # 保留最近5个备份
     ls -t $BACKUP_DIR/image_*.tar 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true
     log "Backup created"
 }
@@ -54,16 +52,15 @@ pull_image() {
 update_static() {
     log "Updating static files..."
     
-    # 克隆或更新代码
     if [ -d "$DEPLOY_DIR/repo" ]; then
         cd $DEPLOY_DIR/repo
         git fetch origin
         git reset --hard origin/main
     else
         git clone https://github.com/t0ken-ai/MemoryX.git $DEPLOY_DIR/repo
+        cd $DEPLOY_DIR/repo
     fi
     
-    # 复制静态文件
     rm -rf $DEPLOY_DIR/static
     cp -r $DEPLOY_DIR/repo/static $DEPLOY_DIR/
     
@@ -72,12 +69,23 @@ update_static() {
 
 # 重启容器
 restart_container() {
-    log "Restarting container..."
+    log "Restarting Docker container..."
     
-    # 使用 systemd 重启
-    sudo systemctl restart memoryx-api
+    # 停止旧容器
+    docker stop memoryx-api 2>/dev/null || true
+    docker rm memoryx-api 2>/dev/null || true
     
-    log "Container restarted"
+    # 启动新容器
+    docker run -d \
+        --name memoryx-api \
+        --restart=unless-stopped \
+        -p 127.0.0.1:8000:8000 \
+        -v $DEPLOY_DIR/static:/app/static:ro \
+        -v /etc/memoryx/api.env:/app/.env:ro \
+        --env-file /etc/memoryx/api.env \
+        $IMAGE
+    
+    log "Container started"
 }
 
 # 健康检查
@@ -96,7 +104,8 @@ health_check() {
 # 主流程
 main() {
     log "=========================================="
-    log "Starting Docker deployment: $DEPLOY_TYPE"
+    log "Docker Deployment: $DEPLOY_TYPE"
+    log "Server: $(hostname -I | awk '{print $1}')"
     log "=========================================="
     
     backup_current
@@ -106,7 +115,7 @@ main() {
     health_check
     
     log "=========================================="
-    log "✅ Docker deployment completed!"
+    log "✅ Deployment completed!"
     log "=========================================="
 }
 

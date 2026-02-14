@@ -1,39 +1,40 @@
 #!/bin/bash
-# MemoryX Docker 部署清单
+# MemoryX Docker 服务器部署脚本
 # 在 31.65 和 31.66 上分别执行
 
 set -e
 
 echo "=========================================="
-echo "MemoryX Docker 服务器部署脚本"
+echo "MemoryX Docker 服务器部署"
 echo "=========================================="
 
 SERVER_IP=$(hostname -I | awk '{print $1}')
 SERVER_TYPE=${1:-"alpha"}
 
-echo "服务器: $SERVER_IP"
-echo "类型: $SERVER_TYPE"
+echo "服务器 IP: $SERVER_IP"
+echo "部署类型: $SERVER_TYPE"
 echo ""
 
-# ==================== 1. 基础环境 ====================
+# ==================== 1. 安装 Docker ====================
 echo "[1/6] 安装 Docker..."
 
 if ! command -v docker &>/dev/null; then
     curl -fsSL https://get.docker.com | sh
-    sudo usermod -aG docker $USER
+    sudo usermod -aG docker $USER 2>/dev/null || true
     echo "✅ Docker 已安装"
 else
-    echo "✅ Docker 已存在"
+    echo "✅ Docker 已存在: $(docker --version)"
 fi
 
+# 创建目录
 sudo mkdir -p /data/memoryx/{static,backups,deploy/scripts}
 sudo mkdir -p /var/log/memoryx
 sudo mkdir -p /etc/memoryx
 
-echo "✅ 目录创建完成"
+echo "✅ 目录结构创建完成"
 echo ""
 
-# ==================== 2. 代码部署 ====================
+# ==================== 2. 部署代码 ====================
 echo "[2/6] 部署代码和脚本..."
 
 if [ ! -d "/data/memoryx/repo" ]; then
@@ -53,11 +54,11 @@ sudo chmod +x /data/memoryx/deploy/scripts/*.sh
 echo "✅ 部署脚本准备完成"
 echo ""
 
-# ==================== 3. Nginx 配置 ====================
+# ==================== 3. Nginx ====================
 echo "[3/6] 配置 Nginx..."
 
 if [ ! -f "/etc/nginx/sites-available/memoryx" ]; then
-    sudo cp /data/memoryx/repo/deploy/nginx/memoryx.conf /etc/nginx/sites-available/memoryx
+    sudo cp /data/memoryx/repo/deploy/nginx/memoryx-internal.conf /etc/nginx/sites-available/memoryx
     sudo ln -sf /etc/nginx/sites-available/memoryx /etc/nginx/sites-enabled/
     sudo rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
     echo "✅ Nginx 配置已添加"
@@ -90,7 +91,7 @@ echo "   sudo vim /etc/systemd/system/memoryx-webhook.service"
 echo "   修改: Environment=\"DEPLOY_TOKEN=your-secret-token\""
 echo ""
 
-# ==================== 5. Systemd 服务 ====================
+# ==================== 5. Systemd ====================
 echo "[5/6] 配置 Systemd 服务..."
 
 sudo cp /data/memoryx/repo/deploy/systemd/memoryx-api-docker.service /etc/systemd/system/memoryx-api.service
@@ -110,22 +111,32 @@ echo ""
 
 # ==================== 完成 ====================
 echo "=========================================="
-echo "📋 Docker 部署清单完成"
+echo "📋 部署清单完成 ($SERVER_TYPE)"
 echo "=========================================="
 echo ""
+echo "服务器: $SERVER_IP"
+echo ""
 echo "待办事项:"
-echo "  [ ] 配置 webhook token: sudo vim /etc/systemd/system/memoryx-webhook.service"
-echo "  [ ] 编辑数据库配置: sudo vim /etc/memoryx/api.env"
-echo "  [ ] 复制静态文件: sudo cp -r /data/memoryx/repo/static/* /data/memoryx/static/"
-echo "  [ ] 启动服务: sudo systemctl start memoryx-webhook memoryx-api"
-echo "  [ ] 检查状态: sudo systemctl status memoryx-api memoryx-webhook"
-echo "  [ ] 测试 API: curl http://localhost:8000/health"
-echo "  [ ] 测试 Webhook: curl http://localhost:9000/"
+echo "  [ ] 配置 webhook token"
+echo "      sudo vim /etc/systemd/system/memoryx-webhook.service"
+echo "      修改: Environment=\"DEPLOY_TOKEN=your-secret-token\""
+echo ""
+echo "  [ ] 编辑数据库配置"
+echo "      sudo vim /etc/memoryx/api.env"
+echo ""
+echo "  [ ] 准备静态文件"
+echo "      sudo cp -r /data/memoryx/repo/static/* /data/memoryx/static/"
+echo ""
+echo "  [ ] 启动服务"
+echo "      sudo systemctl start memoryx-webhook memoryx-api"
+echo ""
+echo "  [ ] 验证部署"
+echo "      curl http://localhost:8000/health"
+echo "      curl http://localhost:9000/"
 echo ""
 echo "GitHub Secrets 配置:"
 echo "  DEPLOY_WEBHOOK_URL: https://t0ken.ai/deploy"
 echo "  DEPLOY_TOKEN: <与服务器配置一致>"
 echo ""
-echo "Docker 镜像:"
-echo "  ghcr.io/t0ken-ai/memoryx-api:latest"
+echo "Docker 镜像: ghcr.io/t0ken-ai/memoryx-api:latest"
 echo ""
