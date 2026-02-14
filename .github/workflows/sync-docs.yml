@@ -24,10 +24,14 @@ jobs:
           path: docs
           token: ${{ secrets.AUTO_DOCS }}
       - run: |
-          cp openapi.json docs/
+          ls -la
+          echo "Copying openapi.json..."
+          cp -v /home/runner/work/MemoryX/MemoryX/openapi.json docs/ 2>/dev/null || cp -v ./openapi.json docs/
+          ls -la docs/openapi.json
           cd docs
           git config user.name "Claw Assistant"
           git config user.email "assistant@openclaw.ai"
           git add openapi.json
-          git commit -m "update" || true
+          git status
+          git commit -m "update" || echo "No changes"
           git push
