@@ -80,7 +80,7 @@ Agent 注册后，访问 [t0ken.ai/agent-register](https://t0ken.ai/agent-regist
 - 服务端永不触碰明文，保障数据安全
 
 **🌐 100% 开源可审计**
-- 完整的开源代码：[github.com/CensorKo/MemoryX](https://github.com/CensorKo/MemoryX)
+- 完整的开源代码：[github.com/t0ken-ai/MemoryX](https://github.com/t0ken-ai/MemoryX)
 - 接受社区审计，确保没有后门
 - 您可以查看、验证甚至改进我们的加密实现
 - 许可证：MIT

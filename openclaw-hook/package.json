@@ -20,7 +20,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/CensorKo/MemoryX.git",
+    "url": "https://github.com/t0ken-ai/MemoryX.git",
     "directory": "openclaw-hook"
   },
   "peerDependencies": {},
