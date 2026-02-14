@@ -65,7 +65,7 @@ for route, directory in static_dirs.items():
 # Static pages
 @app.get("/", response_class=HTMLResponse)
 async def landing_page():
-    landing_html_path = "/app/static/openmemoryx-landing.html"
+    landing_html_path = "/app/static/index.html"
     if os.path.exists(landing_html_path):
         with open(landing_html_path, "r", encoding="utf-8") as f:
             return f.read()

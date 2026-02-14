@@ -7,58 +7,84 @@ on:
       - 'static/**'
   workflow_dispatch:
 
-jobs:
-  deploy-production:
-    name: Deploy to Production (31.65)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      
-      - name: Deploy to 31.65
-        uses: appleboy/scp-action@master
-        with:
-          host: 192.168.31.65
-          username: deploy
-          key: ${{ secrets.SSH_KEY_PRODUCTION }}
-          source: "static/"
-          target: "/data/memoryx/"
-          strip_components: 0
-      
-      - name: Restart Nginx
-        uses: appleboy/ssh-action@master
-        with:
-          host: 192.168.31.65
-          username: deploy
-          key: ${{ secrets.SSH_KEY_PRODUCTION }}
-          script: |
-            sudo nginx -t && sudo systemctl reload nginx
-            echo "✅ Production static files deployed"
+# 注意：31.65/31.66 是内网，GitHub Actions 无法直接访问
+# 替代方案：
+# 1. 使用自托管 Runner（推荐）
+# 2. Webhook + 服务器本地脚本拉取
+# 3. 手动部署
 
-  deploy-test:
-    name: Deploy to Test (31.66)
-    runs-on: ubuntu-latest
-    needs: deploy-production
+jobs:
+  # 方案 1: 自托管 Runner（需要在 31.65/31.66 上安装 GitHub Runner）
+  deploy-self-hosted:
+    name: Deploy via Self-Hosted Runner
+    runs-on: self-hosted  # 需要在服务器上配置 runner
+    if: false  # 暂时禁用，直到配置好 runner
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       
-      - name: Deploy to 31.66
-        uses: appleboy/scp-action@master
-        with:
-          host: 192.168.31.66
-          username: deploy
-          key: ${{ secrets.SSH_KEY_TEST }}
-          source: "static/"
-          target: "/data/memoryx/"
-          strip_components: 0
+      - name: Deploy Static Files
+        run: |
+          sudo cp -r static/* /data/memoryx/static/
+          sudo nginx -t && sudo systemctl reload nginx
+          echo "✅ Static files deployed"
+
+  # 方案 2: 触发 Webhook（服务器监听并拉取）
+  trigger-webhook:
+    name: Trigger Deployment Webhook
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deployment webhook
+        run: |
+          # 发送 webhook 到公网中转服务，由内网服务器订阅
+          # 需要配置 webhook 服务如 https://github.com/adnanh/webhook
+          # 或使用 https://smee.io 等工具
+          echo "⚠️ Webhook deployment not configured"
+          echo ""
+          echo "To enable automatic deployment:"
+          echo "1. Set up webhook listener on 31.65/31.66"
+          echo "2. Configure WEBHOOK_URL secret"
+          echo "3. Uncomment the curl command below"
+          # curl -X POST "${{ secrets.WEBHOOK_URL }}" \
+          #   -H "Authorization: Bearer ${{ secrets.WEBHOOK_SECRET }}" \
+          #   -d '{"event": "static-update", "ref": "${{ github.sha }}"}'
+
+  # 方案 3: 打包 Artifact（手动下载部署）
+  upload-artifact:
+    name: Upload Static Artifact
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
       
-      - name: Restart Nginx
-        uses: appleboy/ssh-action@master
+      - name: Create deployment package
+        run: |
+          mkdir -p deploy
+          cp -r static/* deploy/
+          tar -czf static-files.tar.gz -C deploy .
+          ls -la static-files.tar.gz
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          host: 192.168.31.66
-          username: deploy
-          key: ${{ secrets.SSH_KEY_TEST }}
-          script: |
-            sudo nginx -t && sudo systemctl reload nginx
-            echo "✅ Test static files deployed"
+          name: static-files
+          path: static-files.tar.gz
+          retention-days: 7
+      
+      - name: Deployment instructions
+        run: |
+          echo ""
+          echo "========================================="
+          echo "📦 Static files packaged for deployment"
+          echo "========================================="
+          echo ""
+          echo "Download from: https://github.com/t0ken-ai/MemoryX/actions/runs/${{ github.run_id }}"
+          echo ""
+          echo "Manual deployment steps:"
+          echo "1. Download static-files.tar.gz"
+          echo "2. SCP to 31.65: scp static-files.tar.gz deploy@192.168.31.65:/tmp/"
+          echo "3. SSH and extract:"
+          echo "   ssh deploy@192.168.31.65"
+          echo "   sudo tar -xzf /tmp/static-files.tar.gz -C /data/memoryx/"
+          echo "   sudo nginx -s reload"
+          echo ""
