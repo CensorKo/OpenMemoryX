@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 复制应用代码
 COPY api/app/ ./app/
 
+# 复制静态文件 (portal, landing, etc.)
+COPY static/ /app/static/
+
 # 暴露端口
 EXPOSE 8000
 
