@@ -1,5 +1,5 @@
 {
-  "name": "@memoryx/openclaw-realtime-plugin",
+  "name": "@t0kenai/memoryx-openclaw-plugin",
   "version": "1.0.0",
   "description": "MemoryX real-time memory capture and recall plugin for OpenClaw",
   "type": "module",
