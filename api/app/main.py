@@ -1,6 +1,9 @@
 # Pre-import email_validator to fix pydantic issue
 import email_validator
 
+# MemoryX API - Cognitive Memory System
+# Trigger build: 2026-02-15
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
