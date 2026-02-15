@@ -90,7 +90,7 @@ class LLMClassifier:
         prompt = f"""请分析以下记忆内容，提供结构化分类信息。
 
 记忆内容：
-"""{content}"""
+{content}
 
 请按以下JSON格式返回结果：
 {{
