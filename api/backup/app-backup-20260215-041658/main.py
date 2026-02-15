@@ -1,7 +1,6 @@
 # Pre-import email_validator to fix pydantic issue
 import email_validator
 
-from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -10,8 +9,6 @@ from sqlalchemy.orm import Session
 import httpx
 import hashlib
 import os
-import logging
-
 from app.core.config import get_settings
 from app.core.database import engine, Base, get_db
 from app.core.database import APIKey
@@ -22,55 +19,9 @@ from app.routers.agent_autoregister import router as agent_router
 from app.routers.agent_claim import router as claim_router
 from app.core.celery_config import celery_app
 
-# 导入 MemoryService 用于 lifespan 管理
-from app.services.memory_service import init_memory_service, get_memory_service
-
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
 settings = get_settings()
 
-# 创建数据库表
 Base.metadata.create_all(bind=engine)
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    应用生命周期管理
-    启动时初始化 MemoryService，关闭时清理资源
-    """
-    # 启动时
-    logger.info("Starting up MemoryX API...")
-    
-    try:
-        # 初始化 MemoryService
-        memory_service = init_memory_service(
-            qdrant_url=os.getenv("QDRANT_URL", "http://localhost:6333"),
-            api_key=os.getenv("QDRANT_API_KEY")
-        )
-        logger.info("MemoryService initialized successfully")
-    except Exception as e:
-        logger.warning(f"MemoryService initialization failed: {e}")
-        logger.warning("Memory operations may not work correctly")
-    
-    yield
-    
-    # 关闭时
-    logger.info("Shutting down MemoryX API...")
-    
-    try:
-        # 关闭 MemoryService
-        service = get_memory_service()
-        service.close()
-        logger.info("MemoryService closed successfully")
-    except Exception as e:
-        logger.warning(f"Error closing MemoryService: {e}")
-
 
 app = FastAPI(
     title=settings.app_name,
@@ -78,7 +29,6 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
-    lifespan=lifespan
 )
 
 app.add_middleware(
@@ -155,57 +105,6 @@ async def my_machines_page():
 
 @app.get("/api/health")
 def health_check():
-    """健康检查端点"""
-    return {
-        "status": "healthy",
-        "version": "1.0.0",
-        "services": {
-            "api": "ok",
-            "database": "ok",
-            "qdrant": "configured"  # 将在运行时表示实际状态
-        }
-    }
+    return {"status": "healthy", "version": "1.0.0"}
 
-
-@app.get("/api/health/detailed")
-def health_check_detailed():
-    """详细健康检查端点"""
-    services_status = {
-        "api": "ok",
-        "database": "unknown",
-        "qdrant": "unknown",
-        "celery": "unknown"
-    }
-    
-    # 检查数据库
-    try:
-        from sqlalchemy import text
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        services_status["database"] = "ok"
-    except Exception as e:
-        services_status["database"] = f"error: {str(e)}"
-    
-    # 检查 Qdrant
-    try:
-        service = get_memory_service()
-        collections = service.client.get_collections()
-        services_status["qdrant"] = "ok"
-    except Exception as e:
-        services_status["qdrant"] = f"error: {str(e)}"
-    
-    # 检查 Celery
-    try:
-        # 简单的检查 - 能否访问结果后端
-        celery_app.connection().ensure_connection(max_retries=1)
-        services_status["celery"] = "ok"
-    except Exception as e:
-        services_status["celery"] = f"error: {str(e)}"
-    
-    all_ok = all(status == "ok" for status in services_status.values())
-    
-    return {
-        "status": "healthy" if all_ok else "degraded",
-        "version": "1.0.0",
-        "services": services_status
-    }
+# sync test Sun Feb 15 00:45:38 CST 2026

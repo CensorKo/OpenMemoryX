@@ -12,7 +12,6 @@ from app.services.memory_tasks import (
     get_memory_by_id, delete_memory as delete_memory_service,
     update_memory_task
 )
-from app.services.memory_service import get_memory_service
 from app.core.celery_config import celery_app
 
 router = APIRouter(prefix="/v1", tags=["memories"])
@@ -91,7 +90,7 @@ async def list_memories(
     # Handle different response formats from MemoryX
     if isinstance(result, dict):
         memories = result.get("results", result.get("data", []))
-        total = result.get("total", result.get("count", len(memories)))
+        total = result.get("count", result.get("total", len(memories)))
     else:
         memories = result
         total = len(result)
@@ -126,13 +125,13 @@ async def update_memory(
 ):
     user_id, api_key = user_data
     
-    update_data = {"user_id": user_id}
+    update_data = {}
     if update.content is not None:
         update_data["content"] = update.content
     if update.metadata is not None:
         update_data["metadata"] = update.metadata
     
-    if len(update_data) <= 1:  # 只有user_id
+    if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
     
     update_data["updated_at"] = datetime.utcnow().isoformat()
