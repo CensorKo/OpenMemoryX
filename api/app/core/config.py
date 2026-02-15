@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -28,7 +29,7 @@ class Settings(BaseSettings):
     debug: bool = False
     
     # Optional: Encryption
-    memoryx_master_key: str = None
+    memoryx_master_key: Optional[str] = None
     
     class Config:
         env_file = ".env"
