@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
+        extra = "ignore"  # 允许额外环境变量，不报错
 
 @lru_cache()
 def get_settings():
