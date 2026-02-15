@@ -81,7 +81,7 @@ jobs:
               "repository": "${{ github.repository }}",
               "ref": "${{ github.ref }}",
               "sha": "${{ github.sha }}",
-              "image": "ghcr.io/t0ken-ai/memoryx-api:sha-${{ github.sha }}"
+              "image": "ghcr.io/t0ken-ai/memoryx-api:${{ github.event.release.tag_name }}"
             }' \
             -w "\nHTTP Status: %{http_code}\n" \
             -s
