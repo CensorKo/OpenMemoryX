@@ -69,7 +69,14 @@ jobs:
       - name: Trigger Production Webhook
         run: |
           echo "🚀 Triggering production deployment (31.65)..."
-          curl -X POST "${{ secrets.DEPLOY_WEBHOOK_URL_PROD }}?token=${{ secrets.DEPLOY_KEY }}&type=release" \
+          # 构建 Webhook URL，处理已存在的查询参数
+          WEBHOOK_URL="${{ secrets.DEPLOY_WEBHOOK_URL_PROD }}"
+          if [[ "$WEBHOOK_URL" == *"?"* ]]; then
+            FULL_URL="${WEBHOOK_URL}&token=${{ secrets.DEPLOY_KEY }}&type=release"
+          else
+            FULL_URL="${WEBHOOK_URL}?token=${{ secrets.DEPLOY_KEY }}&type=release"
+          fi
+          curl -X POST "$FULL_URL" \
             -H "Content-Type: application/json" \
             -d '{
               "event": "release",
@@ -97,7 +104,14 @@ jobs:
       - name: Trigger Test Webhook
         run: |
           echo "🧪 Triggering test deployment (31.66)..."
-          curl -X POST "${{ secrets.DEPLOY_WEBHOOK_URL_ALPHA }}?token=${{ secrets.DEPLOY_KEY }}&type=alpha" \
+          # 构建 Webhook URL，处理已存在的查询参数
+          WEBHOOK_URL="${{ secrets.DEPLOY_WEBHOOK_URL_ALPHA }}"
+          if [[ "$WEBHOOK_URL" == *"?"* ]]; then
+            FULL_URL="${WEBHOOK_URL}&token=${{ secrets.DEPLOY_KEY }}&type=alpha"
+          else
+            FULL_URL="${WEBHOOK_URL}?token=${{ secrets.DEPLOY_KEY }}&type=alpha"
+          fi
+          curl -X POST "$FULL_URL" \
             -H "Content-Type: application/json" \
             -d '{
               "event": "push",
