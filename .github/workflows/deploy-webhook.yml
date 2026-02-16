@@ -87,10 +87,7 @@ jobs:
     name: Deploy to Production (31.65)
     needs: build
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'release' || 
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'release')
+    if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'release')
     steps:
       - name: Trigger Production Webhook
         run: |
@@ -114,9 +111,7 @@ jobs:
     name: Deploy to Test (31.66)
     needs: build
     runs-on: ubuntu-latest
-    if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/alpha') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'alpha')
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/alpha') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'alpha')
     steps:
       - name: Trigger Test Webhook
         run: |
