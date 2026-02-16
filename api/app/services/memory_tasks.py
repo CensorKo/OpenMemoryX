@@ -182,13 +182,14 @@ def search_memory(self, query_data: dict, api_key: str = None):
                 "error": "Missing required fields: user_id and query",
                 "results": []
             }
+        
         # 直接调用同步方法
         results = service.search_memories_sync(
             user_id=user_id,
             query=query,
             project_id=project_id,
             limit=limit
-            loop.close()
+        )
         
         # 格式化结果
         formatted_results = []
