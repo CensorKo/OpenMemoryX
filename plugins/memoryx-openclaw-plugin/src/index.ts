@@ -1,15 +1,3 @@
-/**
- * MemoryX Realtime Plugin for OpenClaw
- * 
- * Features:
- * - ConversationBuffer with token counting
- * - Batch upload to /conversations/flush
- * - Auto-register and quota handling
- * - Sensitive data filtered on server
- * - Configurable API base URL
- * - Precise token counting with tiktoken
- */
-
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -17,42 +5,31 @@ import * as crypto from "crypto";
 
 const DEFAULT_API_BASE = "https://t0ken.ai/api";
 
-let logPath: string = "";
+const PLUGIN_DIR = path.join(os.homedir(), ".openclaw", "extensions", "memoryx-openclaw-plugin");
+
 let logStream: fs.WriteStream | null = null;
-let configPath: string = "";
+let logStreamReady = false;
 
-function getLogPath(): string {
-    if (logPath) return logPath;
-    logPath = path.join(os.homedir(), ".openclaw", "extensions", "memoryx-openclaw-plugin", "plugin.log");
-    const dir = path.dirname(logPath);
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
+function ensureDir(): void {
+    if (!fs.existsSync(PLUGIN_DIR)) {
+        fs.mkdirSync(PLUGIN_DIR, { recursive: true });
     }
-    return logPath;
-}
-
-function getConfigPath(): string {
-    if (configPath) return configPath;
-    configPath = path.join(os.homedir(), ".openclaw", "extensions", "memoryx-openclaw-plugin", "config.json");
-    const dir = path.dirname(configPath);
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-    return configPath;
 }
 
 function log(message: string): void {
-    const timestamp = new Date().toISOString();
-    const line = `[${timestamp}] ${message}\n`;
-    try {
-        if (!logStream) {
-            logStream = fs.createWriteStream(getLogPath(), { flags: "a" });
-        }
-        logStream.write(line);
-    } catch (e) {
-        console.error("[MemoryX] Log write failed:", e);
-    }
     console.log(`[MemoryX] ${message}`);
+    setImmediate(() => {
+        try {
+            if (!logStreamReady) {
+                ensureDir();
+                logStream = fs.createWriteStream(path.join(PLUGIN_DIR, "plugin.log"), { flags: "a" });
+                logStreamReady = true;
+            }
+            logStream?.write(`[${new Date().toISOString()}] ${message}\n`);
+        } catch (e) {
+            // ignore
+        }
+    });
 }
 
 interface PluginConfig {
@@ -87,9 +64,19 @@ interface RecallResult {
 }
 
 class JsonStorage {
+    private static configPath: string | null = null;
+    
+    private static getPath(): string {
+        if (!this.configPath) {
+            ensureDir();
+            this.configPath = path.join(PLUGIN_DIR, "config.json");
+        }
+        return this.configPath;
+    }
+    
     static load(): MemoryXConfig | null {
         try {
-            const filePath = getConfigPath();
+            const filePath = this.getPath();
             if (fs.existsSync(filePath)) {
                 const data = fs.readFileSync(filePath, "utf-8");
                 return JSON.parse(data);
@@ -102,7 +89,7 @@ class JsonStorage {
     
     static save(config: MemoryXConfig): void {
         try {
-            const filePath = getConfigPath();
+            const filePath = this.getPath();
             fs.writeFileSync(filePath, JSON.stringify(config, null, 2), "utf-8");
         } catch (e) {
             console.warn("[MemoryX] Failed to save config:", e);
@@ -213,31 +200,29 @@ class MemoryXPlugin {
     private flushTimer: any = null;
     private readonly FLUSH_CHECK_INTERVAL = 30000;
     private pluginConfig: PluginConfig | null = null;
+    private initialized: boolean = false;
     
     constructor(pluginConfig?: PluginConfig) {
-        log("Constructor started");
         this.pluginConfig = pluginConfig || null;
         if (pluginConfig?.apiBaseUrl) {
             this.config.apiBaseUrl = pluginConfig.apiBaseUrl;
-            log(`API Base URL set to: ${pluginConfig.apiBaseUrl}`);
         }
         this.config.initialized = true;
-        log("Constructor finished, scheduling async init");
-        setImmediate(() => {
-            log("Async init started");
-            try {
-                this.loadConfig();
-                log(`Config loaded, apiKey: ${this.config.apiKey ? 'present' : 'missing'}`);
-                this.startFlushTimer();
-                log("Flush timer started");
-                if (!this.config.apiKey) {
-                    log("Starting auto-register");
-                    this.autoRegister().catch(e => log(`Auto-register failed: ${e}`));
-                }
-            } catch (e) {
-                log(`Async init error: ${e}`);
-            }
-        });
+    }
+    
+    init(): void {
+        if (this.initialized) return;
+        this.initialized = true;
+        
+        log("Async init started");
+        this.loadConfig();
+        log(`Config loaded, apiKey: ${this.config.apiKey ? 'present' : 'missing'}`);
+        this.startFlushTimer();
+        
+        if (!this.config.apiKey) {
+            log("Starting auto-register");
+            this.autoRegister().catch(e => log(`Auto-register failed: ${e}`));
+        }
     }
     
     private get apiBase(): string {
@@ -285,9 +270,9 @@ class MemoryXPlugin {
             this.config.userId = data.agent_id;
             this.saveConfig();
             
-            console.log("[MemoryX] Auto-registered successfully");
+            log("Auto-registered successfully");
         } catch (e) {
-            console.error("[MemoryX] Auto-register failed:", e);
+            log(`Auto-register failed: ${e}`);
         }
     }
     
@@ -336,20 +321,22 @@ class MemoryXPlugin {
                 const errorData: any = await response.json().catch(() => ({}));
                 
                 if (response.status === 402) {
-                    console.warn("[MemoryX] Quota exceeded:", errorData.detail);
+                    log(`Quota exceeded: ${errorData.detail}`);
                 } else {
-                    console.error("[MemoryX] Flush failed:", errorData);
+                    log(`Flush failed: ${JSON.stringify(errorData)}`);
                 }
             } else {
                 const result: any = await response.json();
-                console.log(`[MemoryX] Flushed ${data.messages.length} messages, extracted ${result.extracted_count} memories`);
+                log(`Flushed ${data.messages.length} messages, extracted ${result.extracted_count} memories`);
             }
         } catch (e) {
-            console.error("[MemoryX] Flush error:", e);
+            log(`Flush error: ${e}`);
         }
     }
     
     public async onMessage(role: string, content: string): Promise<boolean> {
+        this.init();
+        
         if (!content || content.length < 2) {
             return false;
         }
@@ -375,6 +362,8 @@ class MemoryXPlugin {
     }
     
     public async recall(query: string, limit: number = 5): Promise<RecallResult> {
+        this.init();
+        
         if (!this.config.apiKey || !query || query.length < 2) {
             return { memories: [], isLimited: false, remainingQuota: 0 };
         }
@@ -421,14 +410,14 @@ class MemoryXPlugin {
                 remainingQuota: data.remaining_quota ?? -1
             };
         } catch (e) {
-            console.error("[MemoryX] Recall failed:", e);
+            log(`Recall failed: ${e}`);
             return { memories: [], isLimited: false, remainingQuota: 0 };
         }
     }
     
     public async endConversation(): Promise<void> {
         await this.flushConversation();
-        console.log("[MemoryX] Conversation ended, buffer flushed");
+        log("Conversation ended, buffer flushed");
     }
     
     public getStatus(): { 
@@ -448,28 +437,21 @@ let plugin: MemoryXPlugin;
 
 export default {
     id: "memoryx-openclaw-plugin",
-    name: "MemoryX Real-time Plugin",
-    version: "1.1.4",
+    name: "MemoryX Realtime Plugin",
+    version: "1.2.0",
     description: "Real-time memory capture and recall for OpenClaw",
     
     register(api: any, pluginConfig?: PluginConfig): void {
-        log("=== REGISTER CALLED ===");
         api.logger.info("[MemoryX] Plugin registering...");
         
         if (pluginConfig?.apiBaseUrl) {
             api.logger.info(`[MemoryX] API Base: \`${pluginConfig.apiBaseUrl}\``);
         }
         
-        api.logger.info(`[MemoryX] Config: ${getConfigPath()}`);
-        log(`Config path: ${getConfigPath()}`);
-        log(`Log file: ${getLogPath()}`);
-        
-        log("Creating plugin instance");
         plugin = new MemoryXPlugin(pluginConfig);
-        log("Plugin instance created");
         
         api.on("message_received", async (event: any, ctx: any) => {
-            const { content, from, timestamp } = event;
+            const { content } = event;
             if (content && plugin) {
                 await plugin.onMessage("user", content);
             }
