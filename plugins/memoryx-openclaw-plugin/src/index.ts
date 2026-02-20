@@ -14,12 +14,12 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
-import Database from "better-sqlite3";
 
 const DEFAULT_API_BASE = "https://t0ken.ai/api";
 
 let logPath: string = "";
 let logStream: fs.WriteStream | null = null;
+let configPath: string = "";
 
 function getLogPath(): string {
     if (logPath) return logPath;
@@ -29,6 +29,16 @@ function getLogPath(): string {
         fs.mkdirSync(dir, { recursive: true });
     }
     return logPath;
+}
+
+function getConfigPath(): string {
+    if (configPath) return configPath;
+    configPath = path.join(os.homedir(), ".openclaw", "extensions", "memoryx-openclaw-plugin", "config.json");
+    const dir = path.dirname(configPath);
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+    return configPath;
 }
 
 function log(message: string): void {
@@ -76,62 +86,13 @@ interface RecallResult {
     upgradeHint?: string;
 }
 
-let db: Database.Database | null = null;
-let dbPath: string = "";
-
-function getDbPath(): string {
-    if (dbPath) return dbPath;
-    
-    const possiblePaths = [
-        path.join(process.cwd(), "memoryx.sqlite"),
-        path.join(os.homedir(), ".openclaw", "extensions", "memoryx-openclaw-plugin", "memoryx.sqlite"),
-        path.join(os.homedir(), ".t0ken", "memoryx.sqlite")
-    ];
-    
-    for (const p of possiblePaths) {
-        if (fs.existsSync(p)) {
-            dbPath = p;
-            return dbPath;
-        }
-    }
-    
-    dbPath = path.join(os.homedir(), ".openclaw", "extensions", "memoryx-openclaw-plugin", "memoryx.sqlite");
-    const dir = path.dirname(dbPath);
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-    
-    return dbPath;
-}
-
-function initDb(): Database.Database {
-    const dbFile = getDbPath();
-    const database = new Database(dbFile);
-    
-    database.exec(`
-        CREATE TABLE IF NOT EXISTS config (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        )
-    `);
-    
-    return database;
-}
-
-function getDb(): Database.Database {
-    if (!db) {
-        db = initDb();
-    }
-    return db;
-}
-
-class SQLiteStorage {
+class JsonStorage {
     static load(): MemoryXConfig | null {
         try {
-            const database = getDb();
-            const row = database.prepare("SELECT value FROM config WHERE key = 'config'").get() as { value: string } | undefined;
-            if (row) {
-                return JSON.parse(row.value);
+            const filePath = getConfigPath();
+            if (fs.existsSync(filePath)) {
+                const data = fs.readFileSync(filePath, "utf-8");
+                return JSON.parse(data);
             }
         } catch (e) {
             console.warn("[MemoryX] Failed to load config:", e);
@@ -141,10 +102,8 @@ class SQLiteStorage {
     
     static save(config: MemoryXConfig): void {
         try {
-            const database = getDb();
-            database.prepare(`
-                INSERT OR REPLACE INTO config (key, value) VALUES ('config', ?)
-            `).run(JSON.stringify(config));
+            const filePath = getConfigPath();
+            fs.writeFileSync(filePath, JSON.stringify(config, null, 2), "utf-8");
         } catch (e) {
             console.warn("[MemoryX] Failed to save config:", e);
         }
@@ -286,7 +245,7 @@ class MemoryXPlugin {
     }
     
     private loadConfig(): void {
-        const stored = SQLiteStorage.load();
+        const stored = JsonStorage.load();
         if (stored) {
             this.config = { 
                 ...this.config, 
@@ -297,7 +256,7 @@ class MemoryXPlugin {
     }
     
     private saveConfig(): void {
-        SQLiteStorage.save(this.config);
+        JsonStorage.save(this.config);
     }
     
     private async autoRegister(): Promise<void> {
@@ -501,8 +460,8 @@ export default {
             api.logger.info(`[MemoryX] API Base: \`${pluginConfig.apiBaseUrl}\``);
         }
         
-        api.logger.info(`[MemoryX] Database: ${getDbPath()}`);
-        log(`Database path: ${getDbPath()}`);
+        api.logger.info(`[MemoryX] Config: ${getConfigPath()}`);
+        log(`Config path: ${getConfigPath()}`);
         log(`Log file: ${getLogPath()}`);
         
         log("Creating plugin instance");
