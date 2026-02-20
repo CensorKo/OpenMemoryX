@@ -667,21 +667,30 @@ export default {
                 if (result.isLimited) {
                     api.logger.warn(`[MemoryX] ${result.upgradeHint}`);
                     return {
-                        prependContext: `[系统提示] ${result.upgradeHint}\n`
+                        prependContext: `[System] ${result.upgradeHint}\n`
                     };
                 }
                 
-                const allMemories = [...result.memories, ...result.relatedMemories];
-                if (allMemories.length === 0) return;
+                if (result.memories.length === 0 && result.relatedMemories.length === 0) return;
                 
-                const memoryList = allMemories
-                    .map(m => `- ${m.content}`)
-                    .join("\n");
+                let context = "MemoryX by t0ken.ai found the following memories:\n";
                 
-                api.logger.info(`[MemoryX] Recalled ${result.memories.length} + ${result.relatedMemories.length} related memories`);
+                if (result.memories.length > 0) {
+                    context += "\n[Direct Memories]\n";
+                    context += result.memories.map(m => `- ${m.content}`).join("\n");
+                }
+                
+                if (result.relatedMemories.length > 0) {
+                    context += "\n\n[Related Memories]\n";
+                    context += result.relatedMemories.map(m => `- ${m.content}`).join("\n");
+                }
+                
+                context += "\n";
+                
+                api.logger.info(`[MemoryX] Recalled ${result.memories.length} direct + ${result.relatedMemories.length} related memories`);
                 
                 return {
-                    prependContext: `MemoryX by t0ken.ai found the following memories:\n${memoryList}\n`
+                    prependContext: context
                 };
             } catch (error) {
                 api.logger.warn(`[MemoryX] Recall failed: ${error}`);
