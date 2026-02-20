@@ -161,7 +161,6 @@ class ConversationBuffer {
     
     private readonly ROUND_THRESHOLD = 2;
     private readonly TIMEOUT_MS = 30 * 60 * 1000;
-    private readonly MAX_CHARS_PER_MESSAGE = 32000;
     
     constructor() {
         this.conversationId = this.generateId();
@@ -173,10 +172,6 @@ class ConversationBuffer {
     
     addMessage(role: string, content: string): boolean {
         if (!content || content.length < 2) {
-            return false;
-        }
-        
-        if (content.length > this.MAX_CHARS_PER_MESSAGE) {
             return false;
         }
         
