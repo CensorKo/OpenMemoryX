@@ -43,11 +43,10 @@ def create_key(
     db: Session = Depends(get_db)
 ):
     api_key = "omx_" + secrets.token_urlsafe(32)
-    key_hash = hashlib.sha256(api_key.encode()).hexdigest()
     
     db_key = APIKey(
         user_id=current_user.id,
-        key_hash=key_hash,
+        key_hash=api_key,
         name=key_data.name
     )
     db.add(db_key)
@@ -59,7 +58,7 @@ def create_key(
         "name": db_key.name,
         "is_active": db_key.is_active,
         "created_at": db_key.created_at.isoformat() if db_key.created_at else None,
-        "key": api_key  # Only shown once
+        "key": api_key
     }
 
 @router.delete("/{key_id}")

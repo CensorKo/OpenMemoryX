@@ -415,15 +415,11 @@ class MemoryXPlugin {
             }
             
             const data: any = await response.json();
-            if (data.api_key) {
-                this.config.apiKey = data.api_key;
-                this.config.projectId = String(data.project_id);
-                this.config.userId = data.agent_id;
-                await this.saveConfig();
-                log("Auto-registered successfully");
-            } else {
-                log("Machine already registered, using cached API key");
-            }
+            this.config.apiKey = data.api_key;
+            this.config.projectId = String(data.project_id);
+            this.config.userId = data.agent_id;
+            await this.saveConfig();
+            log("Auto-registered successfully");
         } catch (e) {
             log(`Auto-register failed: ${e}`);
         }
