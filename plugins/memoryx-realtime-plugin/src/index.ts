@@ -6,20 +6,26 @@
  * - Batch upload to /conversations/flush
  * - Auto-register and quota handling
  * - Sensitive data filtered on server
+ * - Configurable API base URL
  */
 
-const MEMORYX_API_BASE = "https://t0ken.ai/api";
+const DEFAULT_API_BASE = "https://t0ken.ai/api";
 
 declare const localStorage: any;
 declare const navigator: any;
 declare const screen: any;
 declare const crypto: any;
 
+interface PluginConfig {
+    apiBaseUrl?: string;
+}
+
 interface MemoryXConfig {
     apiKey: string | null;
     projectId: string;
     userId: string | null;
     initialized: boolean;
+    apiBaseUrl: string;
 }
 
 interface Message {
@@ -144,15 +150,25 @@ class MemoryXPlugin {
         apiKey: null,
         projectId: "default",
         userId: null,
-        initialized: false
+        initialized: false,
+        apiBaseUrl: DEFAULT_API_BASE
     };
     
     private buffer: ConversationBuffer = new ConversationBuffer();
     private flushTimer: any = null;
-    private readonly FLUSH_CHECK_INTERVAL = 30000; // 30 seconds
+    private readonly FLUSH_CHECK_INTERVAL = 30000;
+    private pluginConfig: PluginConfig | null = null;
     
-    constructor() {
+    constructor(pluginConfig?: PluginConfig) {
+        this.pluginConfig = pluginConfig || null;
+        if (pluginConfig?.apiBaseUrl) {
+            this.config.apiBaseUrl = pluginConfig.apiBaseUrl;
+        }
         this.init();
+    }
+    
+    private get apiBase(): string {
+        return this.config.apiBaseUrl || DEFAULT_API_BASE;
     }
     
     private async init(): Promise<void> {
@@ -170,7 +186,12 @@ class MemoryXPlugin {
         try {
             const stored = localStorage.getItem("memoryx_config");
             if (stored) {
-                this.config = { ...this.config, ...JSON.parse(stored) };
+                const storedConfig = JSON.parse(stored);
+                this.config = { 
+                    ...this.config, 
+                    ...storedConfig,
+                    apiBaseUrl: storedConfig.apiBaseUrl || this.config.apiBaseUrl
+                };
             }
         } catch (e) {
             console.warn("[MemoryX] Failed to load config:", e);
@@ -189,7 +210,7 @@ class MemoryXPlugin {
         try {
             const fingerprint = await this.getMachineFingerprint();
             
-            const response = await fetch(`${MEMORYX_API_BASE}/agents/auto-register`, {
+            const response = await fetch(`${this.apiBase}/agents/auto-register`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -254,7 +275,7 @@ class MemoryXPlugin {
         }
         
         try {
-            const response = await fetch(`${MEMORYX_API_BASE}/v1/conversations/flush`, {
+            const response = await fetch(`${this.apiBase}/v1/conversations/flush`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -311,7 +332,7 @@ class MemoryXPlugin {
         }
         
         try {
-            const response = await fetch(`${MEMORYX_API_BASE}/v1/memories/search`, {
+            const response = await fetch(`${this.apiBase}/v1/memories/search`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -375,13 +396,13 @@ class MemoryXPlugin {
     }
 }
 
-const plugin = new MemoryXPlugin();
+let plugin: MemoryXPlugin;
 
 export async function onMessage(
     message: string,
     context: Record<string, any>
 ): Promise<{ context: Record<string, any> }> {
-    if (message) {
+    if (message && plugin) {
         await plugin.onMessage("user", message);
     }
     return { context };
@@ -394,26 +415,32 @@ export function onResponse(
     return response;
 }
 
-export function register(api: any): void {
+export function register(api: any, pluginConfig?: PluginConfig): void {
     api.logger.info("[MemoryX] Plugin registering (Phase 1 - Cloud with Buffer)...");
+    
+    if (pluginConfig?.apiBaseUrl) {
+        api.logger.info(`[MemoryX] Using custom API base URL: ${pluginConfig.apiBaseUrl}`);
+    }
+    
+    plugin = new MemoryXPlugin(pluginConfig);
     
     api.on("message_received", async (event: any, ctx: any) => {
         const { content, from, timestamp } = event;
-        if (content) {
+        if (content && plugin) {
             await plugin.onMessage("user", content);
         }
     });
     
     api.on("assistant_response", async (event: any, ctx: any) => {
         const { content } = event;
-        if (content) {
+        if (content && plugin) {
             await plugin.onMessage("assistant", content);
         }
     });
     
     api.on("before_agent_start", async (event: any, ctx: any) => {
         const { prompt } = event;
-        if (!prompt || prompt.length < 2) return;
+        if (!prompt || prompt.length < 2 || !plugin) return;
         
         try {
             const result = await plugin.recall(prompt, 5);
@@ -442,7 +469,9 @@ export function register(api: any): void {
     });
     
     api.on("conversation_end", async (event: any, ctx: any) => {
-        await plugin.endConversation();
+        if (plugin) {
+            await plugin.endConversation();
+        }
     });
     
     api.logger.info("[MemoryX] Plugin registered successfully");
