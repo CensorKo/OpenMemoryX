@@ -1,5 +1,5 @@
 /**
- * MemoryX Realtime Plugin for OpenClaw - Phase 1
+ * MemoryX Realtime Plugin for OpenClaw
  * 
  * Features:
  * - ConversationBuffer with token counting
@@ -8,20 +8,17 @@
  * - Sensitive data filtered on server
  * - Configurable API base URL
  * - Precise token counting with tiktoken
- * 
- * Model Downloads (CDN):
- * - INT8 Model (122MB, recommended): https://static.t0ken.ai/models/model_int8.onnx
- * - FP32 Model (489MB): https://static.t0ken.ai/models/model.onnx
  */
 
 import { getEncoding, Tiktoken } from "js-tiktoken";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+import * as crypto from "crypto";
 
 const DEFAULT_API_BASE = "https://t0ken.ai/api";
-
-declare const localStorage: any;
-declare const navigator: any;
-declare const screen: any;
-declare const crypto: any;
+const CONFIG_DIR = path.join(os.homedir(), ".t0ken");
+const CONFIG_FILE = path.join(CONFIG_DIR, "memoryx.json");
 
 interface PluginConfig {
     apiBaseUrl?: string;
@@ -52,6 +49,31 @@ interface RecallResult {
     isLimited: boolean;
     remainingQuota: number;
     upgradeHint?: string;
+}
+
+class FileStorage {
+    static load(): MemoryXConfig | null {
+        try {
+            if (fs.existsSync(CONFIG_FILE)) {
+                const data = fs.readFileSync(CONFIG_FILE, "utf-8");
+                return JSON.parse(data);
+            }
+        } catch (e) {
+            console.warn("[MemoryX] Failed to load config:", e);
+        }
+        return null;
+    }
+    
+    static save(config: MemoryXConfig): void {
+        try {
+            if (!fs.existsSync(CONFIG_DIR)) {
+                fs.mkdirSync(CONFIG_DIR, { recursive: true });
+            }
+            fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+        } catch (e) {
+            console.warn("[MemoryX] Failed to save config:", e);
+        }
+    }
 }
 
 class ConversationBuffer {
@@ -188,7 +210,7 @@ class MemoryXPlugin {
     }
     
     private async init(): Promise<void> {
-        await this.loadConfig();
+        this.loadConfig();
         
         if (!this.config.apiKey) {
             await this.autoRegister();
@@ -198,33 +220,24 @@ class MemoryXPlugin {
         this.config.initialized = true;
     }
     
-    private async loadConfig(): Promise<void> {
-        try {
-            const stored = localStorage.getItem("memoryx_config");
-            if (stored) {
-                const storedConfig = JSON.parse(stored);
-                this.config = { 
-                    ...this.config, 
-                    ...storedConfig,
-                    apiBaseUrl: storedConfig.apiBaseUrl || this.config.apiBaseUrl
-                };
-            }
-        } catch (e) {
-            console.warn("[MemoryX] Failed to load config:", e);
+    private loadConfig(): void {
+        const stored = FileStorage.load();
+        if (stored) {
+            this.config = { 
+                ...this.config, 
+                ...stored,
+                apiBaseUrl: this.pluginConfig?.apiBaseUrl || stored.apiBaseUrl || this.config.apiBaseUrl
+            };
         }
     }
     
     private saveConfig(): void {
-        try {
-            localStorage.setItem("memoryx_config", JSON.stringify(this.config));
-        } catch (e) {
-            console.warn("[MemoryX] Failed to save config:", e);
-        }
+        FileStorage.save(this.config);
     }
     
     private async autoRegister(): Promise<void> {
         try {
-            const fingerprint = await this.getMachineFingerprint();
+            const fingerprint = this.getMachineFingerprint();
             
             const response = await fetch(`${this.apiBase}/agents/auto-register`, {
                 method: "POST",
@@ -233,8 +246,8 @@ class MemoryXPlugin {
                     machine_fingerprint: fingerprint,
                     agent_type: "openclaw",
                     agent_name: "openclaw-agent",
-                    platform: navigator.platform,
-                    platform_version: navigator.userAgent
+                    platform: os.platform(),
+                    platform_version: os.release()
                 })
             });
             
@@ -254,22 +267,17 @@ class MemoryXPlugin {
         }
     }
     
-    private async getMachineFingerprint(): Promise<string> {
+    private getMachineFingerprint(): string {
         const components = [
-            navigator.platform,
-            navigator.language,
-            navigator.hardwareConcurrency || 0,
-            screen.width,
-            screen.height,
-            new Date().getTimezoneOffset()
+            os.hostname(),
+            os.platform(),
+            os.arch(),
+            os.cpus()[0]?.model || "unknown",
+            os.totalmem()
         ];
         
         const raw = components.join("|");
-        const encoder = new TextEncoder();
-        const data = encoder.encode(raw);
-        const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.slice(0, 32).map(b => b.toString(16).padStart(2, "0")).join("");
+        return crypto.createHash("sha256").update(raw).digest("hex").slice(0, 32);
     }
     
     private startFlushTimer(): void {
@@ -417,7 +425,7 @@ let plugin: MemoryXPlugin;
 export default {
     id: "memoryx-openclaw-plugin",
     name: "MemoryX Real-time Plugin",
-    version: "1.0.8",
+    version: "1.1.0",
     description: "Real-time memory capture and recall for OpenClaw",
     
     register(api: any, pluginConfig?: PluginConfig): void {
@@ -427,10 +435,7 @@ export default {
             api.logger.info(`[MemoryX] API Base: \`${pluginConfig.apiBaseUrl}\``);
         }
         
-        const storedConfig = localStorage.getItem("memoryx_config");
-        if (storedConfig) {
-            api.logger.info(`[MemoryX] Database: ${storedConfig.split('"apiBaseUrl"')[0].match(/"([^"]+)"/)?.[1] || 'unknown'}`);
-        }
+        api.logger.info(`[MemoryX] Config: ${CONFIG_FILE}`);
         
         plugin = new MemoryXPlugin(pluginConfig);
         

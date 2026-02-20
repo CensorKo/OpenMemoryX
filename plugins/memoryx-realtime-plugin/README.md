@@ -35,6 +35,9 @@ Edit `~/.openclaw/openclaw.json`:
       },
       "memory-core": {
         "enabled": false
+      },
+      "memory-lancedb": {
+        "enabled": false
       }
     }
   }
@@ -57,6 +60,9 @@ For self-hosted MemoryX:
         }
       },
       "memory-core": {
+        "enabled": false
+      },
+      "memory-lancedb": {
         "enabled": false
       }
     }
