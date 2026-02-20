@@ -52,7 +52,7 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
     db.flush()
     
     api_key = generate_api_key()
-    db_key = APIKey(user_id=user.id, key_hash=api_key, name="Default")
+    db_key = APIKey(user_id=user.id, api_key=api_key, name="Default")
     db.add(db_key)
     
     db.commit()

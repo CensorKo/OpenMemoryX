@@ -104,7 +104,7 @@ class APIKey(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    key_hash = Column(String(255), unique=True, index=True, nullable=False)
+    api_key = Column(String(255), unique=True, index=True, nullable=False)
     name = Column(String(100), default="Default")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)

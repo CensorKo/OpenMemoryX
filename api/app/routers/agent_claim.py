@@ -36,7 +36,7 @@ async def initiate_claim(
 ):
     """Agent 发起认领请求 - 生成验证码"""
     
-    api_key_record = db.query(APIKey).filter(APIKey.key_hash == request.api_key).first()
+    api_key_record = db.query(APIKey).filter(APIKey.api_key == request.api_key).first()
     if not api_key_record:
         raise HTTPException(status_code=401, detail="Invalid API key")
     

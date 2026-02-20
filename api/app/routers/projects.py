@@ -31,7 +31,7 @@ def get_current_user_api(x_api_key: str = Header(None), db: Session = Depends(ge
     if not x_api_key:
         raise HTTPException(status_code=401, detail="X-API-Key header required")
     
-    api_key = db.query(APIKey).filter(APIKey.key_hash == x_api_key, APIKey.is_active == True).first()
+    api_key = db.query(APIKey).filter(APIKey.api_key == x_api_key, APIKey.is_active == True).first()
     
     if not api_key:
         raise HTTPException(status_code=401, detail="Invalid API Key")

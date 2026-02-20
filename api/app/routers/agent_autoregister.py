@@ -72,10 +72,9 @@ async def auto_register_agent(
         db.commit()
         db.refresh(project)
         
-        # 创建 API Key - 使用 key_hash 字段
         api_key_value = f"mx_m_{machine_hash}_{secrets.token_hex(16)}"
         api_key = APIKey(
-            key_hash=api_key_value,
+            api_key=api_key_value,
             name=f"Auto-generated for {request.agent_name}",
             user_id=user.id,
             project_id=project.id,
@@ -110,7 +109,7 @@ async def auto_register_agent(
         if not api_key:
             api_key_value = f"mx_m_{machine_hash}_{secrets.token_hex(16)}"
             api_key = APIKey(
-                key_hash=api_key_value,
+                api_key=api_key_value,
                 name=f"Auto-generated for {request.agent_name}",
                 user_id=user.id,
                 project_id=project.id,
@@ -119,7 +118,7 @@ async def auto_register_agent(
             db.add(api_key)
             db.commit()
         else:
-            api_key_value = api_key.key_hash
+            api_key_value = api_key.api_key
         
         user.last_login = datetime.utcnow()
         db.commit()
@@ -139,7 +138,7 @@ async def get_machine_stats(
 ):
     """获取当前机器上的 Agent 统计信息"""
     
-    key_record = db.query(APIKey).filter(APIKey.key_hash == api_key).first()
+    key_record = db.query(APIKey).filter(APIKey.api_key == api_key).first()
     if not key_record:
         raise HTTPException(status_code=401, detail="Invalid API key")
     

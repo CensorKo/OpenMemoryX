@@ -154,7 +154,7 @@ def get_current_user_with_quota(
         raise HTTPException(status_code=401, detail="X-API-Key header required")
     
     api_key = db.query(APIKey).filter(
-        APIKey.key_hash == x_api_key, 
+        APIKey.api_key == x_api_key, 
         APIKey.is_active == True
     ).first()
     

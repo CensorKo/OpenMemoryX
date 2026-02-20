@@ -45,7 +45,7 @@ def create_key(
     
     db_key = APIKey(
         user_id=current_user.id,
-        key_hash=api_key,
+        api_key=api_key,
         name=key_data.name
     )
     db.add(db_key)
