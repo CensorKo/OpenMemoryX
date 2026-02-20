@@ -1,6 +1,6 @@
 {
-  "name": "memoryx-openclaw-plugin",
-  "version": "1.0.5",
+  "name": "@t0ken.ai/memoryx-openclaw-plugin",
+  "version": "1.0.6",
   "description": "MemoryX real-time memory capture and recall plugin for OpenClaw",
   "type": "module",
   "author": "MemoryX Team",

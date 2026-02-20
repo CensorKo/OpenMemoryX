@@ -14,7 +14,7 @@ Official MemoryX plugin for OpenClaw. Enables long-term memory for agents by rec
 ### Option A — NPM (Recommended)
 
 ```bash
-openclaw plugins install memoryx-openclaw-plugin
+openclaw plugins install @t0ken.ai/memoryx-openclaw-plugin
 openclaw gateway restart
 ```
 
@@ -24,7 +24,7 @@ Make sure it's enabled in `~/.openclaw/openclaw.json`:
 {
   "plugins": {
     "entries": {
-      "memoryx-openclaw-plugin": { "enabled": true }
+      "@t0ken.ai/memoryx-openclaw-plugin": { "enabled": true }
     }
   }
 }
