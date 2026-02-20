@@ -19,6 +19,33 @@ import Database from "better-sqlite3";
 
 const DEFAULT_API_BASE = "https://t0ken.ai/api";
 
+let logPath: string = "";
+let logStream: fs.WriteStream | null = null;
+
+function getLogPath(): string {
+    if (logPath) return logPath;
+    logPath = path.join(os.homedir(), ".openclaw", "extensions", "memoryx-openclaw-plugin", "plugin.log");
+    const dir = path.dirname(logPath);
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+    return logPath;
+}
+
+function log(message: string): void {
+    const timestamp = new Date().toISOString();
+    const line = `[${timestamp}] ${message}\n`;
+    try {
+        if (!logStream) {
+            logStream = fs.createWriteStream(getLogPath(), { flags: "a" });
+        }
+        logStream.write(line);
+    } catch (e) {
+        console.error("[MemoryX] Log write failed:", e);
+    }
+    console.log(`[MemoryX] ${message}`);
+}
+
 interface PluginConfig {
     apiBaseUrl?: string;
 }
@@ -247,16 +274,27 @@ class MemoryXPlugin {
     private pluginConfig: PluginConfig | null = null;
     
     constructor(pluginConfig?: PluginConfig) {
+        log("Constructor started");
         this.pluginConfig = pluginConfig || null;
         if (pluginConfig?.apiBaseUrl) {
             this.config.apiBaseUrl = pluginConfig.apiBaseUrl;
+            log(`API Base URL set to: ${pluginConfig.apiBaseUrl}`);
         }
         this.config.initialized = true;
+        log("Constructor finished, scheduling async init");
         setImmediate(() => {
-            this.loadConfig();
-            this.startFlushTimer();
-            if (!this.config.apiKey) {
-                this.autoRegister().catch(e => console.error("[MemoryX] Auto-register failed:", e));
+            log("Async init started");
+            try {
+                this.loadConfig();
+                log(`Config loaded, apiKey: ${this.config.apiKey ? 'present' : 'missing'}`);
+                this.startFlushTimer();
+                log("Flush timer started");
+                if (!this.config.apiKey) {
+                    log("Starting auto-register");
+                    this.autoRegister().catch(e => log(`Auto-register failed: ${e}`));
+                }
+            } catch (e) {
+                log(`Async init error: ${e}`);
             }
         });
     }
@@ -470,10 +508,11 @@ let plugin: MemoryXPlugin;
 export default {
     id: "memoryx-openclaw-plugin",
     name: "MemoryX Real-time Plugin",
-    version: "1.1.1",
+    version: "1.1.4",
     description: "Real-time memory capture and recall for OpenClaw",
     
     register(api: any, pluginConfig?: PluginConfig): void {
+        log("=== REGISTER CALLED ===");
         api.logger.info("[MemoryX] Plugin registering...");
         
         if (pluginConfig?.apiBaseUrl) {
@@ -481,8 +520,12 @@ export default {
         }
         
         api.logger.info(`[MemoryX] Database: ${getDbPath()}`);
+        log(`Database path: ${getDbPath()}`);
+        log(`Log file: ${getLogPath()}`);
         
+        log("Creating plugin instance");
         plugin = new MemoryXPlugin(pluginConfig);
+        log("Plugin instance created");
         
         api.on("message_received", async (event: any, ctx: any) => {
             const { content, from, timestamp } = event;
