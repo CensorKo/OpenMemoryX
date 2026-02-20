@@ -98,6 +98,12 @@ interface RecallResult {
         category: string;
         score: number;
     }>;
+    relatedMemories: Array<{
+        id: string;
+        content: string;
+        category: string;
+        score: number;
+    }>;
     isLimited: boolean;
     remainingQuota: number;
     upgradeHint?: string;
@@ -544,7 +550,7 @@ class MemoryXPlugin {
         this.init();
         
         if (!this.config.apiKey || !query || query.length < 2) {
-            return { memories: [], isLimited: false, remainingQuota: 0 };
+            return { memories: [], relatedMemories: [], isLimited: false, remainingQuota: 0 };
         }
         
         try {
@@ -567,6 +573,7 @@ class MemoryXPlugin {
                 if (response.status === 402 || response.status === 429) {
                     return {
                         memories: [],
+                        relatedMemories: [],
                         isLimited: true,
                         remainingQuota: 0,
                         upgradeHint: errorData.detail || "云端查询配额已用尽，请升级到付费版"
@@ -581,16 +588,22 @@ class MemoryXPlugin {
             return {
                 memories: (data.data || []).map((m: any) => ({
                     id: m.id,
-                    content: m.content,
+                    content: m.memory || m.content,
                     category: m.category || "other",
                     score: m.score || 0.5
+                })),
+                relatedMemories: (data.related_memories || []).map((m: any) => ({
+                    id: m.id,
+                    content: m.memory || m.content,
+                    category: m.category || "other",
+                    score: m.score || 0
                 })),
                 isLimited: false,
                 remainingQuota: data.remaining_quota ?? -1
             };
         } catch (e) {
             log(`Recall failed: ${e}`);
-            return { memories: [], isLimited: false, remainingQuota: 0 };
+            return { memories: [], relatedMemories: [], isLimited: false, remainingQuota: 0 };
         }
     }
     
@@ -658,16 +671,17 @@ export default {
                     };
                 }
                 
-                if (result.memories.length === 0) return;
+                const allMemories = [...result.memories, ...result.relatedMemories];
+                if (allMemories.length === 0) return;
                 
-                const memories = result.memories
-                    .map(m => `- [${m.category}] ${m.content}`)
+                const memoryList = allMemories
+                    .map(m => `- ${m.content}`)
                     .join("\n");
                 
-                api.logger.info(`[MemoryX] Recalled ${result.memories.length} memories from cloud`);
+                api.logger.info(`[MemoryX] Recalled ${result.memories.length} + ${result.relatedMemories.length} related memories`);
                 
                 return {
-                    prependContext: `[相关记忆]\n${memories}\n[End of memories]\n`
+                    prependContext: `t0ken.ai的MemoryX找到以下记忆：\n${memoryList}\n`
                 };
             } catch (error) {
                 api.logger.warn(`[MemoryX] Recall failed: ${error}`);
