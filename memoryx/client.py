@@ -269,7 +269,7 @@ def on_response(response, context):
             "metadata": metadata or {}
         }
         
-        return self._request("POST", "/memories", data)
+        return self._request("POST", "/v1/memories", data)
     
     def list(self, project_id: Optional[str] = None, 
              limit: int = 100, offset: int = 0) -> dict:
@@ -291,7 +291,7 @@ def on_response(response, context):
         if project_id:
             params += f"&project_id={project_id}"
             
-        return self._request("GET", f"/memories{params}")
+        return self._request("GET", f"/v1/memories{params}")
     
     def search(self, query: str, project_id: Optional[str] = None,
                limit: int = 10) -> dict:
@@ -317,7 +317,7 @@ def on_response(response, context):
         if project_id:
             data["project_id"] = project_id
             
-        return self._request("POST", "/memories/search", data)
+        return self._request("POST", "/v1/memories/search", data)
     
     def delete(self, memory_id: str) -> dict:
         """
@@ -332,7 +332,7 @@ def on_response(response, context):
         if not self.api_key:
             raise MemoryXError("Not registered. Call auto_register() first.")
             
-        return self._request("DELETE", f"/memories/{memory_id}")
+        return self._request("DELETE", f"/v1/memories/{memory_id}")
     
     def get_claim_code(self) -> str:
         """
@@ -346,7 +346,7 @@ def on_response(response, context):
             
         # 这里需要调用 claim/init 接口
         # 由于需要邮箱，我们先返回一个提示
-        result = self._request("POST", "/agents/claim/init", {
+        result = self._request("POST", "/agents/claim/initiate", {
             "machine_fingerprint": self.machine_fingerprint,
             "email": "pending@example.com"  # 占位，实际需要用户提供
         })
