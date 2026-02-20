@@ -25,6 +25,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
+import { getEncoding } from "js-tiktoken";
 
 const DEFAULT_API_BASE = "https://t0ken.ai/api";
 
@@ -32,6 +33,22 @@ const PLUGIN_DIR = path.join(os.homedir(), ".openclaw", "extensions", "memoryx-o
 
 let logStream: fs.WriteStream | null = null;
 let logStreamReady = false;
+let tokenizer: ReturnType<typeof getEncoding> | null = null;
+
+function getTokenizer(): ReturnType<typeof getEncoding> {
+    if (!tokenizer) {
+        tokenizer = getEncoding("cl100k_base");
+    }
+    return tokenizer;
+}
+
+function countTokens(text: string): number {
+    try {
+        return getTokenizer().encode(text).length;
+    } catch {
+        return Math.ceil(text.length / 4);
+    }
+}
 
 function ensureDir(): void {
     if (!fs.existsSync(PLUGIN_DIR)) {
@@ -238,7 +255,7 @@ class SQLiteStorage {
         return rows.map((r: any) => ({
             role: r.role,
             content: r.content,
-            tokens: 0,
+            tokens: countTokens(r.content),
             timestamp: r.timestamp
         }));
     }
@@ -528,7 +545,7 @@ class MemoryXPlugin {
                                 role: m.role,
                                 content: m.content,
                                 timestamp: m.timestamp,
-                                tokens: 0
+                                tokens: countTokens(m.content)
                             }))
                         })
                     });
