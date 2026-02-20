@@ -15,10 +15,9 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import * as crypto from "crypto";
+import Database from "better-sqlite3";
 
 const DEFAULT_API_BASE = "https://t0ken.ai/api";
-const CONFIG_DIR = path.join(os.homedir(), ".t0ken");
-const CONFIG_FILE = path.join(CONFIG_DIR, "memoryx.json");
 
 interface PluginConfig {
     apiBaseUrl?: string;
@@ -51,12 +50,62 @@ interface RecallResult {
     upgradeHint?: string;
 }
 
-class FileStorage {
+let db: Database.Database | null = null;
+let dbPath: string = "";
+
+function getDbPath(): string {
+    if (dbPath) return dbPath;
+    
+    const possiblePaths = [
+        path.join(process.cwd(), "memoryx.sqlite"),
+        path.join(os.homedir(), ".openclaw", "extensions", "memoryx-openclaw-plugin", "memoryx.sqlite"),
+        path.join(os.homedir(), ".t0ken", "memoryx.sqlite")
+    ];
+    
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            dbPath = p;
+            return dbPath;
+        }
+    }
+    
+    dbPath = path.join(os.homedir(), ".openclaw", "extensions", "memoryx-openclaw-plugin", "memoryx.sqlite");
+    const dir = path.dirname(dbPath);
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    return dbPath;
+}
+
+function initDb(): Database.Database {
+    const dbFile = getDbPath();
+    const database = new Database(dbFile);
+    
+    database.exec(`
+        CREATE TABLE IF NOT EXISTS config (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    `);
+    
+    return database;
+}
+
+function getDb(): Database.Database {
+    if (!db) {
+        db = initDb();
+    }
+    return db;
+}
+
+class SQLiteStorage {
     static load(): MemoryXConfig | null {
         try {
-            if (fs.existsSync(CONFIG_FILE)) {
-                const data = fs.readFileSync(CONFIG_FILE, "utf-8");
-                return JSON.parse(data);
+            const database = getDb();
+            const row = database.prepare("SELECT value FROM config WHERE key = 'config'").get() as { value: string } | undefined;
+            if (row) {
+                return JSON.parse(row.value);
             }
         } catch (e) {
             console.warn("[MemoryX] Failed to load config:", e);
@@ -66,10 +115,10 @@ class FileStorage {
     
     static save(config: MemoryXConfig): void {
         try {
-            if (!fs.existsSync(CONFIG_DIR)) {
-                fs.mkdirSync(CONFIG_DIR, { recursive: true });
-            }
-            fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+            const database = getDb();
+            database.prepare(`
+                INSERT OR REPLACE INTO config (key, value) VALUES ('config', ?)
+            `).run(JSON.stringify(config));
         } catch (e) {
             console.warn("[MemoryX] Failed to save config:", e);
         }
@@ -221,7 +270,7 @@ class MemoryXPlugin {
     }
     
     private loadConfig(): void {
-        const stored = FileStorage.load();
+        const stored = SQLiteStorage.load();
         if (stored) {
             this.config = { 
                 ...this.config, 
@@ -232,7 +281,7 @@ class MemoryXPlugin {
     }
     
     private saveConfig(): void {
-        FileStorage.save(this.config);
+        SQLiteStorage.save(this.config);
     }
     
     private async autoRegister(): Promise<void> {
@@ -425,7 +474,7 @@ let plugin: MemoryXPlugin;
 export default {
     id: "memoryx-openclaw-plugin",
     name: "MemoryX Real-time Plugin",
-    version: "1.1.0",
+    version: "1.1.1",
     description: "Real-time memory capture and recall for OpenClaw",
     
     register(api: any, pluginConfig?: PluginConfig): void {
@@ -435,7 +484,7 @@ export default {
             api.logger.info(`[MemoryX] API Base: \`${pluginConfig.apiBaseUrl}\``);
         }
         
-        api.logger.info(`[MemoryX] Config: ${CONFIG_FILE}`);
+        api.logger.info(`[MemoryX] Database: ${getDbPath()}`);
         
         plugin = new MemoryXPlugin(pluginConfig);
         
