@@ -41,10 +41,11 @@ class SensitiveFilterResult(BaseModel):
 
 
 SENSITIVE_FILTER_PROMPT = """分析以下对话，识别并标记敏感信息：
-- 个人身份信息（姓名、身份证、电话、地址）
-- 财务信息（银行卡、密码、金额）
-- 健康信息（病历、诊断）
-- 位置信息（精确地址、GPS）
+只识别以下类型：
+- 银行卡卡号（如：6222xxxxxxxxxxxx）
+- 密码（如：密码是xxx、我的密码是xxx）
+
+注意：姓名、地址、手机号码、身份证号不需要过滤，这些是正常信息。
 
 对话内容：
 {conversation}
