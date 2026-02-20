@@ -259,21 +259,51 @@ class SQLiteStorage {
         const row = db.prepare("SELECT MAX(retry_count) as max FROM pending_messages").get() as any;
         return row?.max || 0;
     }
+    
+    static async getTempConversationStats(conversationId: string): Promise<{ count: number; rounds: number }> {
+        const db = await getDb();
+        const rows = db.prepare(`
+            SELECT role FROM temp_messages 
+            WHERE conversation_id = ? 
+            ORDER BY id ASC
+        `).all(conversationId) as any[];
+        
+        let rounds = 0;
+        let lastRole = "";
+        for (const row of rows) {
+            if (row.role === "assistant" && lastRole === "user") {
+                rounds++;
+            }
+            lastRole = row.role;
+        }
+        
+        return { count: rows.length, rounds };
+    }
+    
+    static async getAllTempConversations(): Promise<string[]> {
+        const db = await getDb();
+        const rows = db.prepare(`SELECT DISTINCT conversation_id FROM temp_messages`).all() as any[];
+        return rows.map(r => r.conversation_id);
+    }
+    
+    static async getConversationFirstActivity(conversationId: string): Promise<number> {
+        const db = await getDb();
+        const row = db.prepare(`
+            SELECT MIN(created_at) as first_at FROM temp_messages WHERE conversation_id = ?
+        `).get(conversationId) as any;
+        return row?.first_at || 0;
+    }
 }
 
-class ConversationBuffer {
-    private messages: Message[] = [];
-    private roundCount: number = 0;
-    private lastRole: string = "";
-    private conversationId: string = "";
-    private startedAt: number = Date.now();
+class ConversationManager {
+    private currentConversationId: string = "";
     private lastActivityAt: number = Date.now();
     
     private readonly ROUND_THRESHOLD = 2;
     private readonly TIMEOUT_MS = 30 * 60 * 1000;
     
     constructor() {
-        this.conversationId = this.generateId();
+        this.currentConversationId = this.generateId();
     }
     
     private generateId(): string {
@@ -281,38 +311,28 @@ class ConversationBuffer {
     }
     
     getConversationId(): string {
-        return this.conversationId;
+        return this.currentConversationId;
     }
     
-    addMessage(role: string, content: string): boolean {
+    async addMessage(role: string, content: string): Promise<boolean> {
         if (!content || content.length < 2) {
             return false;
         }
         
-        const message: Message = {
-            role,
-            content,
-            tokens: 0,
-            timestamp: Date.now()
-        };
-        
-        this.messages.push(message);
+        await SQLiteStorage.addTempMessage(this.currentConversationId, role, content);
         this.lastActivityAt = Date.now();
         
-        if (role === "assistant" && this.lastRole === "user") {
-            this.roundCount++;
-        }
-        this.lastRole = role;
-        
-        return this.roundCount >= this.ROUND_THRESHOLD;
+        const stats = await SQLiteStorage.getTempConversationStats(this.currentConversationId);
+        return stats.rounds >= this.ROUND_THRESHOLD;
     }
     
-    shouldFlush(): boolean {
-        if (this.messages.length === 0) {
+    async shouldFlush(): Promise<boolean> {
+        const stats = await SQLiteStorage.getTempConversationStats(this.currentConversationId);
+        if (stats.count === 0) {
             return false;
         }
         
-        if (this.roundCount >= this.ROUND_THRESHOLD) {
+        if (stats.rounds >= this.ROUND_THRESHOLD) {
             return true;
         }
         
@@ -324,33 +344,31 @@ class ConversationBuffer {
         return false;
     }
     
-    flush(): { conversation_id: string; messages: Message[] } {
+    async flush(): Promise<{ conversation_id: string; messages: Message[] } | null> {
+        const messages = await SQLiteStorage.getTempMessages(this.currentConversationId);
+        if (messages.length === 0) {
+            return null;
+        }
+        
         const data = {
-            conversation_id: this.conversationId,
-            messages: [...this.messages]
+            conversation_id: this.currentConversationId,
+            messages
         };
         
-        this.messages = [];
-        this.roundCount = 0;
-        this.lastRole = "";
-        this.conversationId = this.generateId();
-        this.startedAt = Date.now();
+        await SQLiteStorage.clearTempMessages(this.currentConversationId);
+        
+        this.currentConversationId = this.generateId();
         this.lastActivityAt = Date.now();
         
         return data;
     }
     
-    forceFlush(): { conversation_id: string; messages: Message[] } | null {
-        if (this.messages.length === 0) {
-            return null;
-        }
-        return this.flush();
-    }
-    
-    getStatus(): { messageCount: number; conversationId: string } {
+    async getStatus(): Promise<{ messageCount: number; conversationId: string; rounds: number }> {
+        const stats = await SQLiteStorage.getTempConversationStats(this.currentConversationId);
         return {
-            messageCount: this.messages.length,
-            conversationId: this.conversationId
+            messageCount: stats.count,
+            conversationId: this.currentConversationId,
+            rounds: stats.rounds
         };
     }
 }
@@ -364,7 +382,7 @@ class MemoryXPlugin {
         apiBaseUrl: DEFAULT_API_BASE
     };
     
-    private buffer: ConversationBuffer = new ConversationBuffer();
+    private conversationManager: ConversationManager = new ConversationManager();
     private flushTimer: any = null;
     private pendingRetryTimer: any = null;
     private readonly FLUSH_CHECK_INTERVAL = 30000;
@@ -465,9 +483,9 @@ class MemoryXPlugin {
     }
     
     private startFlushTimer(): void {
-        this.flushTimer = setInterval(() => {
-            if (this.buffer.shouldFlush()) {
-                this.flushConversation();
+        this.flushTimer = setInterval(async () => {
+            if (await this.conversationManager.shouldFlush()) {
+                await this.flushConversation();
             }
         }, this.FLUSH_CHECK_INTERVAL);
     }
@@ -534,7 +552,7 @@ class MemoryXPlugin {
     
     private async flushConversation(): Promise<void> {
         if (!this.config.apiKey) {
-            const data = this.buffer.forceFlush();
+            const data = await this.conversationManager.flush();
             if (data && data.messages.length > 0) {
                 await SQLiteStorage.addPendingConversation(data.conversation_id, data.messages);
                 log(`Cached ${data.messages.length} messages (no API key)`);
@@ -542,7 +560,7 @@ class MemoryXPlugin {
             return;
         }
         
-        const data = this.buffer.forceFlush();
+        const data = await this.conversationManager.flush();
         if (!data || data.messages.length === 0) {
             return;
         }
@@ -598,9 +616,7 @@ class MemoryXPlugin {
             }
         }
         
-        await SQLiteStorage.addTempMessage(this.buffer.getConversationId(), role, content);
-        
-        const shouldFlush = this.buffer.addMessage(role, content);
+        const shouldFlush = await this.conversationManager.addMessage(role, content);
         
         if (shouldFlush) {
             await this.flushConversation();
@@ -665,19 +681,19 @@ class MemoryXPlugin {
     
     public async endConversation(): Promise<void> {
         await this.flushConversation();
-        await SQLiteStorage.clearTempMessages(this.buffer.getConversationId());
         log("Conversation ended, buffer flushed");
     }
     
-    public getStatus(): { 
+    public async getStatus(): Promise<{ 
         initialized: boolean; 
         hasApiKey: boolean; 
-        bufferStatus: { messageCount: number; conversationId: string } 
-    } {
+        conversationStatus: { messageCount: number; conversationId: string; rounds: number } 
+    }> {
+        const status = await this.conversationManager.getStatus();
         return {
             initialized: this.config.initialized,
             hasApiKey: !!this.config.apiKey,
-            bufferStatus: this.buffer.getStatus()
+            conversationStatus: status
         };
     }
 }
@@ -753,4 +769,4 @@ export default {
     }
 };
 
-export { MemoryXPlugin, ConversationBuffer };
+export { MemoryXPlugin, ConversationManager };
