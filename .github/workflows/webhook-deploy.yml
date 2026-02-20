@@ -1,4 +1,4 @@
-name: Reusable Webhook Deploy
+name: Webhook Deploy
 
 on:
   workflow_call:
@@ -24,38 +24,14 @@ on:
         default: ''
 
 jobs:
-  trigger-webhook:
-    name: Trigger Deployment Webhook
+  trigger:
+    name: Trigger Webhook
     runs-on: ubuntu-latest
     steps:
-      - name: Determine webhook parameters
-        id: params
+      - name: Trigger Deployment Webhook
         run: |
           DEPLOY_TYPE="${{ inputs.deploy_type }}"
           IMAGE="${{ inputs.image }}"
-          
-          if [ "$DEPLOY_TYPE" = "static" ]; then
-            echo "type=static" >> $GITHUB_OUTPUT
-            echo "image=" >> $GITHUB_OUTPUT
-            echo "Deploying static files..."
-          elif [ -n "$IMAGE" ]; then
-            echo "type=$DEPLOY_TYPE" >> $GITHUB_OUTPUT
-            echo "image=$IMAGE" >> $GITHUB_OUTPUT
-            echo "Deploying with custom image: $IMAGE"
-          elif [ "$DEPLOY_TYPE" = "release" ]; then
-            echo "type=release" >> $GITHUB_OUTPUT
-            echo "image=ghcr.io/t0ken-ai/memoryx-api:latest" >> $GITHUB_OUTPUT
-            echo "Deploying to production (latest)..."
-          else
-            echo "type=alpha" >> $GITHUB_OUTPUT
-            echo "image=ghcr.io/t0ken-ai/memoryx-api:alpha" >> $GITHUB_OUTPUT
-            echo "Deploying to test (alpha)..."
-          fi
-
-      - name: Trigger Webhook
-        run: |
-          DEPLOY_TYPE="${{ steps.params.outputs.type }}"
-          IMAGE="${{ steps.params.outputs.image }}"
           
           echo "=========================================="
           echo "Triggering deployment webhook"
@@ -90,4 +66,4 @@ jobs:
           fi
           
           echo ""
-          echo "✅ Webhook triggered successfully"
+          echo "✅ Webhook triggered"
