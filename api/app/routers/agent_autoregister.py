@@ -109,8 +109,9 @@ async def auto_register_agent(
         
         if not api_key:
             api_key_value = f"mx_m_{machine_hash}_{secrets.token_hex(16)}"
+            api_key_hash = hashlib.sha256(api_key_value.encode()).hexdigest()
             api_key = APIKey(
-                key_hash=api_key_value,
+                key_hash=api_key_hash,
                 name=f"Auto-generated for {request.agent_name}",
                 user_id=user.id,
                 project_id=project.id,
@@ -118,13 +119,15 @@ async def auto_register_agent(
             )
             db.add(api_key)
             db.commit()
+        else:
+            api_key_value = None
         
         user.last_login = datetime.utcnow()
         db.commit()
     
     return AgentRegisterResponse(
         agent_id=f"agent_{machine_hash}_{secrets.token_hex(8)}",
-        api_key=api_key.key_hash,
+        api_key=api_key_value,
         project_id=project.id,
         is_new_machine=is_new_machine,
         message="Welcome! Your agent is connected to your machine's memory pool." if is_new_machine else "Welcome back! Connected to existing memory pool."
