@@ -57,3 +57,6 @@ node_modules/
 
 # Package files
 *.tgz
+
+# Nginx config (server-specific)
+nginx-hybrid.conf

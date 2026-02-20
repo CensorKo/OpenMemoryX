@@ -12,7 +12,8 @@ This project integrates the core AI capabilities from OpenMemoryX into a unified
 - **SQLAlchemy**: Database ORM for user/project management
 - **Celery + Redis**: Asynchronous task processing
 - **Qdrant**: Vector database for memory storage and semantic search
-- **Ollama**: Local LLM for memory classification and embeddings
+- **Neo4j**: Graph database for entity relationships
+- **Ollama/vLLM**: LLM for memory classification and embeddings
 
 ### Memory Core Features (from OpenMemoryX)
 
@@ -25,11 +26,11 @@ Located in `api/app/services/memory_core/`:
   - Emotional: Feelings, satisfaction, complaints
   - Reflective: Insights, patterns, recommendations
 
-- **memory_service.py**: Core memory operations with hybrid approach
+- **graph_memory_service.py**: Core memory operations with hybrid approach
   - Project-based organization
   - Vector similarity search
-  - AES-256-GCM encryption
-  - Per-user Data Encryption Keys (DEK)
+  - Graph-based entity relationships
+  - Temporal knowledge graph
 
 - **scoring.py**: Composite scoring algorithm for result ranking
 
@@ -49,11 +50,15 @@ Located in `api/app/services/memory_core/`:
 
 ### Memories
 - `POST /api/v1/memories` - Create memory (with AI classification)
-- `GET /api/v1/memories` - List memories
-- `GET /api/v1/memories/{id}` - Get memory by ID
-- `PUT /api/v1/memories/{id}` - Update memory
-- `DELETE /api/v1/memories/{id}` - Delete memory
+- `POST /api/v1/memories/batch` - Batch create memories
+- `GET /api/v1/memories/task/{task_id}` - Get async task status
 - `POST /api/v1/memories/search` - Vector similarity search
+- `POST /api/v1/memories/graph/search` - Graph-based search
+- `GET /api/v1/quota` - Get quota status
+
+### Conversations
+- `POST /api/v1/conversations/flush` - Flush conversation buffer
+- `POST /api/v1/conversations/realtime` - Real-time conversation processing
 
 ### Projects
 - `GET /api/projects` - List projects
@@ -63,15 +68,16 @@ Located in `api/app/services/memory_core/`:
 - `DELETE /api/projects/{id}` - Delete project
 
 ### Agent Management
-- `POST /api/auto-register` - Auto-register agent
-- `GET /api/machine-stats` - Get machine statistics
-- `POST /api/initiate` - Initiate claim
-- `GET /api/status/{code}` - Check claim status
-- `POST /api/verify` - Verify claim
-- `POST /api/complete` - Complete claim
+- `POST /api/agents/auto-register` - Auto-register agent
+- `GET /api/agents/machine-stats` - Get machine statistics
+- `POST /api/agents/claim/initiate` - Initiate claim
+- `GET /api/agents/claim/status/{code}` - Check claim status
+- `POST /api/agents/claim/verify` - Verify claim
+- `POST /api/agents/claim/complete` - Complete claim
 
 ### Health
 - `GET /api/health` - Health check
+- `GET /api/health/detailed` - Detailed health check
 
 ## Environment Variables
 
@@ -79,24 +85,25 @@ Located in `api/app/services/memory_core/`:
 # Database
 DATABASE_URL=postgresql://user:password@localhost:5432/memoryx
 
-# Redis
+# Redis/Valkey
 REDIS_URL=redis://localhost:6379/0
 
 # Security
 SECRET_KEY=your-secret-key
 
-# Ollama (for AI classification)
-OLLAMA_BASE_URL=http://localhost:11434
-LLM_MODEL=gemma3-27b-q8
+# LLM Service
+LLM_BASE_URL=http://localhost:11434
+LLM_MODEL=qwen2.5-14b
 EMBED_MODEL=bge-m3
 
 # Qdrant (vector store)
 QDRANT_HOST=localhost
 QDRANT_PORT=6333
-QDRANT_COLLECTION=mem0
 
-# Optional: Encryption
-MEMORYX_MASTER_KEY=your-32-byte-hex-key
+# Neo4j (graph store)
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=password
 ```
 
 ## Deployment
@@ -113,11 +120,18 @@ docker build -f Dockerfile.api -t memoryx-api:latest .
 docker run -d \
   --name memoryx-api \
   -p 8000:8000 \
-  -e DATABASE_URL=postgresql://... \
-  -e REDIS_URL=redis://... \
-  -e QDRANT_HOST=localhost \
-  -e OLLAMA_BASE_URL=http://localhost:11434 \
+  --env-file /etc/memoryx/api.env \
   memoryx-api:latest
+```
+
+### With Celery Worker
+
+```bash
+docker run -d \
+  --name memoryx-celery \
+  --env-file /etc/memoryx/api.env \
+  memoryx-api:latest \
+  python -m celery -A app.core.celery_config worker --loglevel=info
 ```
 
 ## Development
@@ -130,23 +144,30 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-### Generate OpenAPI
+## SDK & Plugins
+
+### Python SDK
 
 ```bash
-cd api
-python generate_openapi.py
+pip install t0ken-memoryx
 ```
 
-## Integration from OpenMemoryX
+```python
+from memoryx import connect_memory
+memory = connect_memory()
+memory.add("User prefers dark mode")
+results = memory.search("user preferences")
+```
 
-This project consolidates the following from the original OpenMemoryX:
-- Complete memory management with AI classification
-- Vector search with Qdrant
-- Temporal knowledge graph
-- Composite scoring algorithm
-- Encryption support
+### OpenClaw Plugin
 
-The old proxy-based architecture has been replaced with direct implementation.
+```bash
+npm install @t0ken.ai/memoryx-openclaw-plugin
+```
+
+Model Downloads (CDN):
+- INT8 Model (122MB, recommended): https://static.t0ken.ai/models/model_int8.onnx
+- FP32 Model (489MB): https://static.t0ken.ai/models/model.onnx
 
 ## License
 
