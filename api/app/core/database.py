@@ -72,7 +72,7 @@ class User(Base):
     merged_to_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     
     subscription_tier = Column(
-        SQLEnum(SubscriptionTier),
+        SQLEnum(SubscriptionTier, values_callable=lambda obj: [e.value for e in obj]),
         default=SubscriptionTier.FREE,
         nullable=False
     )
