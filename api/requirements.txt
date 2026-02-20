@@ -12,6 +12,7 @@ alembic
 python-jose[cryptography]
 passlib[bcrypt]
 email-validator
+cryptography>=41.0.0
 
 # Celery
 redis
@@ -19,6 +20,7 @@ celery
 
 # HTTP Client
 httpx>=0.24.0
+requests>=2.28.0
 
 # Vector Store
 qdrant-client>=1.6.0
