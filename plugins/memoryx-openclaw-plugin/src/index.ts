@@ -1,3 +1,26 @@
+/**
+ * MemoryX Realtime Plugin for OpenClaw
+ * 
+ * ⚠️ CRITICAL: DO NOT execute any synchronous I/O in register() function!
+ * 
+ * OpenClaw calls register() synchronously (see openclaw/src/plugins/loader.ts):
+ *   const result = register(api);
+ *   if (result && typeof result.then === "function") {
+ *     // async registration is ignored
+ *   }
+ * 
+ * Any sync I/O (fs.existsSync, fs.mkdirSync, fs.readFileSync, better-sqlite3, etc.)
+ * will BLOCK the Node.js event loop and cause gateway restart to hang.
+ * 
+ * SOLUTION:
+ * 1. register() must return immediately without any I/O
+ * 2. All initialization (DB, config loading, etc.) must be lazy-loaded
+ * 3. Use dynamic import() for better-sqlite3: await import("better-sqlite3")
+ * 4. Use setImmediate() for deferred operations
+ * 
+ * See: https://github.com/openclaw/openclaw (memory-lancedb plugin pattern)
+ */
+
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
