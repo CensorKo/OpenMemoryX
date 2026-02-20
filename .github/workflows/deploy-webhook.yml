@@ -1,10 +1,4 @@
-name: Build and Deploy via Webhook
-
-# 部署流程 v2：
-# - push 到 alpha 分支 → 构建并部署到 31.66 测试环境
-# - push 到 main 分支 → 构建并部署到 31.65 生产环境
-# - release 发布 → 部署到 31.65 生产环境（带 tag）
-# - workflow_dispatch 手动触发
+name: Build and Deploy API
 
 on:
   release:
@@ -79,43 +73,23 @@ jobs:
   deploy-production:
     name: Deploy to Production (31.65)
     needs: build
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/webhook-deploy.yml
     if: github.event_name == 'release' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'release')
-    steps:
-      - name: Trigger Production Webhook
-        run: |
-          echo "Deploying to production (31.65)..."
-          curl -X POST "${{ secrets.DEPLOY_WEBHOOK_URL }}?token=${{ secrets.DEPLOY_KEY }}&type=release" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "event": "${{ github.event_name }}",
-              "repository": "${{ github.repository }}",
-              "ref": "${{ github.ref }}",
-              "sha": "${{ github.sha }}",
-              "image": "ghcr.io/t0ken-ai/memoryx-api:${{ needs.build.outputs.image_tag }}"
-            }' \
-            -w "\nHTTP Status: %{http_code}\n" \
-            -s
-          echo "Production deployment triggered"
+    with:
+      deploy_type: release
+      image: ghcr.io/t0ken-ai/memoryx-api:${{ needs.build.outputs.image_tag }}
+      sha: ${{ github.sha }}
+      ref: ${{ github.ref }}
+    secrets: inherit
 
   deploy-alpha:
     name: Deploy to Test (31.66)
     needs: build
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/webhook-deploy.yml
     if: (github.event_name == 'push' && github.ref == 'refs/heads/alpha') || (github.event_name == 'workflow_dispatch' && inputs.environment == 'alpha')
-    steps:
-      - name: Trigger Test Webhook
-        run: |
-          echo "Deploying to test environment (31.66)..."
-          curl -X POST "${{ secrets.DEPLOY_WEBHOOK_URL }}?token=${{ secrets.DEPLOY_KEY }}&type=alpha" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "event": "push",
-              "repository": "${{ github.repository }}",
-              "ref": "${{ github.ref }}",
-              "sha": "${{ github.sha }}",
-              "image": "ghcr.io/t0ken-ai/memoryx-api:alpha"
-            }' \
-            -w "\nHTTP Status: %{http_code}\n" \
-            -s
-          echo "Test deployment triggered"
+    with:
+      deploy_type: alpha
+      image: ghcr.io/t0ken-ai/memoryx-api:alpha
+      sha: ${{ github.sha }}
+      ref: ${{ github.ref }}
+    secrets: inherit

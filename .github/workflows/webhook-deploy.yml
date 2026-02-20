@@ -1,0 +1,93 @@
+name: Reusable Webhook Deploy
+
+on:
+  workflow_call:
+    inputs:
+      deploy_type:
+        description: 'Deployment type (alpha/release/static)'
+        required: true
+        type: string
+      image:
+        description: 'Docker image to deploy (optional, for API only)'
+        required: false
+        type: string
+        default: ''
+      sha:
+        description: 'Git commit SHA'
+        required: false
+        type: string
+        default: ''
+      ref:
+        description: 'Git ref'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  trigger-webhook:
+    name: Trigger Deployment Webhook
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine webhook parameters
+        id: params
+        run: |
+          DEPLOY_TYPE="${{ inputs.deploy_type }}"
+          IMAGE="${{ inputs.image }}"
+          
+          if [ "$DEPLOY_TYPE" = "static" ]; then
+            echo "type=static" >> $GITHUB_OUTPUT
+            echo "image=" >> $GITHUB_OUTPUT
+            echo "Deploying static files..."
+          elif [ -n "$IMAGE" ]; then
+            echo "type=$DEPLOY_TYPE" >> $GITHUB_OUTPUT
+            echo "image=$IMAGE" >> $GITHUB_OUTPUT
+            echo "Deploying with custom image: $IMAGE"
+          elif [ "$DEPLOY_TYPE" = "release" ]; then
+            echo "type=release" >> $GITHUB_OUTPUT
+            echo "image=ghcr.io/t0ken-ai/memoryx-api:latest" >> $GITHUB_OUTPUT
+            echo "Deploying to production (latest)..."
+          else
+            echo "type=alpha" >> $GITHUB_OUTPUT
+            echo "image=ghcr.io/t0ken-ai/memoryx-api:alpha" >> $GITHUB_OUTPUT
+            echo "Deploying to test (alpha)..."
+          fi
+
+      - name: Trigger Webhook
+        run: |
+          DEPLOY_TYPE="${{ steps.params.outputs.type }}"
+          IMAGE="${{ steps.params.outputs.image }}"
+          
+          echo "=========================================="
+          echo "Triggering deployment webhook"
+          echo "Type: $DEPLOY_TYPE"
+          echo "Image: ${IMAGE:-N/A}"
+          echo "SHA: ${{ inputs.sha }}"
+          echo "=========================================="
+          
+          if [ -n "$IMAGE" ]; then
+            curl -X POST "${{ secrets.DEPLOY_WEBHOOK_URL }}?token=${{ secrets.DEPLOY_KEY }}&type=$DEPLOY_TYPE" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "event": "${{ github.event_name }}",
+                "repository": "${{ github.repository }}",
+                "ref": "${{ inputs.ref }}",
+                "sha": "${{ inputs.sha }}",
+                "image": "'"$IMAGE"'"
+              }' \
+              -w "\nHTTP Status: %{http_code}\n" \
+              -s
+          else
+            curl -X POST "${{ secrets.DEPLOY_WEBHOOK_URL }}?token=${{ secrets.DEPLOY_KEY }}&type=$DEPLOY_TYPE" \
+              -H "Content-Type: application/json" \
+              -d '{
+                "event": "${{ github.event_name }}",
+                "repository": "${{ github.repository }}",
+                "ref": "${{ inputs.ref }}",
+                "sha": "${{ inputs.sha }}"
+              }' \
+              -w "\nHTTP Status: %{http_code}\n" \
+              -s
+          fi
+          
+          echo ""
+          echo "✅ Webhook triggered successfully"
