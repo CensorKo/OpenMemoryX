@@ -612,6 +612,74 @@ class MemoryXPlugin {
         log("Conversation ended, starting new conversation");
     }
     
+    public async forget(memoryId: string): Promise<boolean> {
+        this.init();
+        
+        if (!this.config.apiKey) {
+            log("Forget failed: no API key");
+            return false;
+        }
+        
+        try {
+            const response = await fetch(`${this.apiBase}/v1/memories/${memoryId}`, {
+                method: "DELETE",
+                headers: {
+                    "X-API-Key": this.config.apiKey
+                }
+            });
+            
+            if (response.ok) {
+                log(`Forgot memory ${memoryId}`);
+                return true;
+            }
+            
+            log(`Forget failed: ${response.status}`);
+            return false;
+        } catch (e) {
+            log(`Forget failed: ${e}`);
+            return false;
+        }
+    }
+    
+    public async list(limit: number = 10): Promise<any[]> {
+        this.init();
+        
+        if (!this.config.apiKey) {
+            log("List failed: no API key");
+            return [];
+        }
+        
+        try {
+            const response = await fetch(`${this.apiBase}/v1/memories/search`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-API-Key": this.config.apiKey
+                },
+                body: JSON.stringify({
+                    query: "*",
+                    project_id: this.config.projectId,
+                    limit
+                })
+            });
+            
+            if (!response.ok) {
+                log(`List failed: ${response.status}`);
+                return [];
+            }
+            
+            const data: any = await response.json();
+            return (data.data || []).map((m: any) => ({
+                id: m.id,
+                content: m.memory || m.content,
+                category: m.category || "other"
+            }));
+        } catch (e) {
+            log(`List failed: ${e}`);
+            return [];
+        }
+    }
+    
     public async getStatus(): Promise<{ 
         initialized: boolean; 
         hasApiKey: boolean; 
@@ -631,7 +699,7 @@ let plugin: MemoryXPlugin;
 export default {
     id: "memoryx-openclaw-plugin",
     name: "MemoryX Realtime Plugin",
-    version: "1.2.0",
+    version: "1.1.16",
     description: "Real-time memory capture and recall for OpenClaw",
     
     register(api: any, pluginConfig?: PluginConfig): void {
@@ -642,6 +710,194 @@ export default {
         }
         
         plugin = new MemoryXPlugin(pluginConfig);
+        
+        api.registerTool(
+            {
+                name: "memoryx_recall",
+                label: "MemoryX Recall",
+                description: "Search through long-term memories. Use when you need context about user preferences, past decisions, or previously discussed topics.",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        query: {
+                            type: "string",
+                            description: "Search query to find relevant memories"
+                        },
+                        limit: {
+                            type: "number",
+                            description: "Maximum number of results to return (default: 5)"
+                        }
+                    },
+                    required: ["query"]
+                },
+                async execute(_toolCallId: string, params: any) {
+                    const { query, limit = 5 } = params;
+                    
+                    if (!plugin) {
+                        return {
+                            content: [{ type: "text", text: "MemoryX plugin not initialized." }],
+                            details: { error: "not_initialized" }
+                        };
+                    }
+                    
+                    try {
+                        const result = await plugin.recall(query, limit);
+                        
+                        if (result.isLimited) {
+                            return {
+                                content: [{ type: "text", text: result.upgradeHint || "Quota exceeded" }],
+                                details: { error: "quota_exceeded", hint: result.upgradeHint }
+                            };
+                        }
+                        
+                        if (result.memories.length === 0 && result.relatedMemories.length === 0) {
+                            return {
+                                content: [{ type: "text", text: "No relevant memories found." }],
+                                details: { count: 0 }
+                            };
+                        }
+                        
+                        const lines: string[] = [];
+                        const total = result.memories.length + result.relatedMemories.length;
+                        
+                        if (result.memories.length > 0) {
+                            lines.push(`Found ${result.memories.length} direct memories:`);
+                            result.memories.forEach((m, i) => {
+                                lines.push(`${i + 1}. [${m.category}] ${m.content} (${Math.round(m.score * 100)}%)`);
+                            });
+                        }
+                        
+                        if (result.relatedMemories.length > 0) {
+                            if (lines.length > 0) lines.push("");
+                            lines.push(`Found ${result.relatedMemories.length} related memories:`);
+                            result.relatedMemories.forEach((m, i) => {
+                                lines.push(`${i + 1}. [${m.category}] ${m.content}`);
+                            });
+                        }
+                        
+                        return {
+                            content: [{ type: "text", text: lines.join("\n") }],
+                            details: {
+                                count: total,
+                                direct_count: result.memories.length,
+                                related_count: result.relatedMemories.length,
+                                remaining_quota: result.remainingQuota
+                            }
+                        };
+                    } catch (error: any) {
+                        return {
+                            content: [{ type: "text", text: `Memory search failed: ${error.message}` }],
+                            details: { error: error.message }
+                        };
+                    }
+                }
+            },
+            { name: "memoryx_recall" }
+        );
+        
+        api.registerTool(
+            {
+                name: "memoryx_forget",
+                label: "MemoryX Forget",
+                description: "Delete specific memories. Use when user explicitly asks to forget or remove something from memory.",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        memory_id: {
+                            type: "string",
+                            description: "The ID of the memory to delete"
+                        }
+                    },
+                    required: ["memory_id"]
+                },
+                async execute(_toolCallId: string, params: any) {
+                    const { memory_id } = params;
+                    
+                    if (!plugin) {
+                        return {
+                            content: [{ type: "text", text: "MemoryX plugin not initialized." }],
+                            details: { error: "not_initialized" }
+                        };
+                    }
+                    
+                    try {
+                        const success = await plugin.forget(memory_id);
+                        
+                        if (success) {
+                            return {
+                                content: [{ type: "text", text: `Memory ${memory_id} has been forgotten.` }],
+                                details: { action: "deleted", id: memory_id }
+                            };
+                        } else {
+                            return {
+                                content: [{ type: "text", text: `Memory ${memory_id} not found or could not be deleted.` }],
+                                details: { action: "failed", id: memory_id }
+                            };
+                        }
+                    } catch (error: any) {
+                        return {
+                            content: [{ type: "text", text: `Failed to forget memory: ${error.message}` }],
+                            details: { error: error.message }
+                        };
+                    }
+                }
+            },
+            { name: "memoryx_forget" }
+        );
+        
+        api.registerTool(
+            {
+                name: "memoryx_list",
+                label: "MemoryX List",
+                description: "List all stored memories. Use when user asks what you remember about them.",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        limit: {
+                            type: "number",
+                            description: "Maximum number of memories to list (default: 10)"
+                        }
+                    }
+                },
+                async execute(_toolCallId: string, params: any) {
+                    const { limit = 10 } = params;
+                    
+                    if (!plugin) {
+                        return {
+                            content: [{ type: "text", text: "MemoryX plugin not initialized." }],
+                            details: { error: "not_initialized" }
+                        };
+                    }
+                    
+                    try {
+                        const memories = await plugin.list(limit);
+                        
+                        if (memories.length === 0) {
+                            return {
+                                content: [{ type: "text", text: "No memories stored yet." }],
+                                details: { count: 0 }
+                            };
+                        }
+                        
+                        const lines = [`Here are the ${memories.length} most recent memories:`];
+                        memories.forEach((m: any, i: number) => {
+                            lines.push(`${i + 1}. [${m.category || 'general'}] ${m.content || m.memory}`);
+                        });
+                        
+                        return {
+                            content: [{ type: "text", text: lines.join("\n") }],
+                            details: { count: memories.length }
+                        };
+                    } catch (error: any) {
+                        return {
+                            content: [{ type: "text", text: `Failed to list memories: ${error.message}` }],
+                            details: { error: error.message }
+                        };
+                    }
+                }
+            },
+            { name: "memoryx_list" }
+        );
         
         api.on("message_received", async (event: any, ctx: any) => {
             const { content } = event;
