@@ -44,8 +44,8 @@ async def create_checkout_session(
     if current_user.subscription_tier == SubscriptionTier.PRO:
         raise HTTPException(status_code=400, detail="Already a PRO subscriber")
     
-    success_url = (request.success_url if request else None) or f"{settings.frontend_url}/?session_id={{CHECKOUT_SESSION_ID}}"
-    cancel_url = (request.cancel_url if request else None) or f"{settings.frontend_url}/"
+    success_url = (request.success_url if request else None) or f"{settings.frontend_url}/portal/?payment=success"
+    cancel_url = (request.cancel_url if request else None) or f"{settings.frontend_url}/portal/?payment=canceled"
     
     try:
         customer = None

@@ -540,7 +540,20 @@
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
             setupEmailForm();
+            checkPaymentStatus();
         });
+
+        function checkPaymentStatus() {
+            const params = new URLSearchParams(window.location.search);
+            const payment = params.get('payment');
+            if (payment === 'success') {
+                showToast('Payment successful! You are now a PRO member.', 'success');
+                window.history.replaceState({}, '', window.location.pathname);
+            } else if (payment === 'canceled') {
+                showToast('Payment was canceled.', 'error');
+                window.history.replaceState({}, '', window.location.pathname);
+            }
+        }
 
         // Email form handler
         function setupEmailForm() {
