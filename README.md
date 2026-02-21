@@ -1,224 +1,32 @@
 # MemoryX
 
-AI-powered cognitive memory system with semantic search and graph-based entity relationships.
+**Give your AI a long-term memory.**
 
-## Architecture
+MemoryX is a cognitive memory system that enables AI agents to remember user preferences, past conversations, and important facts across sessions.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      MemoryX API                            │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
-│  │  FastAPI    │  │   Celery    │  │   Memory Core       │ │
-│  │  REST API   │  │   Queue     │  │   - Fact Extraction │ │
-│  └─────────────┘  └─────────────┘  │   - Entity Relations│ │
-│         │                │         │   - Classification  │ │
-│         ▼                ▼         └─────────────────────┘ │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              Storage Layer                          │   │
-│  │  PostgreSQL │ Qdrant (Vector) │ Neo4j (Graph)       │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-```
+## Why MemoryX?
 
-### Components
+**Problem**: AI assistants forget everything after each conversation. You have to repeat your preferences every time.
 
-| Component | Purpose |
-|-----------|---------|
-| FastAPI | REST API server |
-| Celery + Redis | Async task processing |
-| PostgreSQL | User, API key, memory metadata |
-| Qdrant | Vector similarity search |
-| Neo4j | Entity relationship graph |
-| Ollama/vLLM | LLM for fact extraction & embeddings |
+**Solution**: MemoryX gives your AI persistent, searchable memory that works across all your conversations.
 
-## API Endpoints
+### Features
 
-### Authentication
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/register` | User registration |
-| POST | `/api/login` | User login |
-| GET | `/api/me` | Get current user |
+- **Semantic Search** - Find relevant memories by meaning, not just keywords
+- **Auto Classification** - Memories are automatically categorized (preferences, facts, plans, etc.)
+- **Entity Relationships** - Understands connections between people, places, and things
+- **Privacy First** - Self-host or use our cloud. Your data stays yours.
+- **Multi-Agent Support** - Each agent has isolated memory, no cross-contamination
 
-### API Keys
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/api_keys` | List API keys |
-| POST | `/api/api_keys` | Create API key |
-| DELETE | `/api/api_keys/{id}` | Delete API key |
+## Quick Start with OpenClaw
 
-### Memories
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/memories` | Create memory (async, returns task_id) |
-| POST | `/api/v1/memories/batch` | Batch create memories |
-| GET | `/api/v1/memories/task/{task_id}` | Get async task status |
-| POST | `/api/v1/memories/search` | Semantic search |
-| GET | `/api/v1/memories` | List memories |
-| DELETE | `/api/v1/memories/{id}` | Delete memory |
-| GET | `/api/v1/quota` | Get quota status |
-
-### Conversations
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/conversations/flush` | Flush conversation buffer |
-| POST | `/api/v1/conversations/realtime` | Real-time message processing |
-
-### Projects
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/projects` | List projects |
-| POST | `/api/projects` | Create project |
-| GET | `/api/projects/{id}` | Get project |
-| PUT | `/api/projects/{id}` | Update project |
-| DELETE | `/api/projects/{id}` | Delete project |
-
-### Agents
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/agents/auto-register` | Auto-register agent with fingerprint |
-
-### Health
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/health` | Health check |
-
-## Environment Variables
-
-```bash
-DATABASE_URL=postgresql://user:password@localhost:5432/memoryx
-REDIS_URL=redis://localhost:6379/0
-SECRET_KEY=your-secret-key
-
-LLM_BASE_URL=http://localhost:11434
-EMBED_BASE_URL=http://localhost:11434
-LLM_MODEL=qwen2.5-14b
-EMBED_MODEL=bge-m3
-
-QDRANT_HOST=localhost
-QDRANT_PORT=6333
-
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=password
-```
-
-## Deployment
-
-### Docker Compose
-
-```yaml
-version: '3.8'
-services:
-  api:
-    image: ghcr.io/t0ken-ai/memoryx-api:latest
-    ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://memoryx:password@postgres:5432/memoryx
-      - REDIS_URL=redis://redis:6379/0
-      - QDRANT_HOST=qdrant
-      - NEO4J_URI=bolt://neo4j:7687
-    depends_on:
-      - postgres
-      - redis
-      - qdrant
-      - neo4j
-
-  celery:
-    image: ghcr.io/t0ken-ai/memoryx-api:latest
-    command: python -m celery -A app.core.celery_config worker --loglevel=info --concurrency=2
-    environment:
-      - DATABASE_URL=postgresql://memoryx:password@postgres:5432/memoryx
-      - REDIS_URL=redis://redis:6379/0
-      - QDRANT_HOST=qdrant
-      - NEO4J_URI=bolt://neo4j:7687
-    depends_on:
-      - postgres
-      - redis
-
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_USER: memoryx
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: memoryx
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7-alpine
-    volumes:
-      - redis_data:/data
-
-  qdrant:
-    image: qdrant/qdrant:latest
-    ports:
-      - "6333:6333"
-    volumes:
-      - qdrant_data:/qdrant/storage
-
-  neo4j:
-    image: neo4j:5-community
-    ports:
-      - "7474:7474"
-      - "7687:7687"
-    environment:
-      NEO4J_AUTH: neo4j/password
-    volumes:
-      - neo4j_data:/data
-
-volumes:
-  postgres_data:
-  redis_data:
-  qdrant_data:
-  neo4j_data:
-```
-
-## Development
-
-```bash
-cd api
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
-
-Start Celery worker:
-
-```bash
-celery -A app.core.celery_config worker --loglevel=info
-```
-
-## OpenClaw Plugin
-
-MemoryX provides an official OpenClaw plugin for real-time memory capture and recall.
-
-### Install
+### 1. Install the Plugin
 
 ```bash
 openclaw plugins install @t0ken.ai/memoryx-openclaw-plugin
-openclaw gateway restart
 ```
 
-### Update
-
-```bash
-openclaw plugins update @t0ken.ai/memoryx-openclaw-plugin
-openclaw gateway restart
-```
-
-### Function Calling Tools
-
-The plugin registers these tools for LLM:
-
-| Tool | Description |
-|------|-------------|
-| `memoryx_recall` | Search memories by query |
-| `memoryx_store` | Save information to memory |
-| `memoryx_list` | List all stored memories |
-| `memoryx_forget` | Delete a specific memory |
-
-### Configuration
+### 2. Configure
 
 Edit `~/.openclaw/openclaw.json`:
 
@@ -230,10 +38,7 @@ Edit `~/.openclaw/openclaw.json`:
     },
     "entries": {
       "memoryx-openclaw-plugin": {
-        "enabled": true,
-        "config": {
-          "apiBaseUrl": "https://t0ken.ai/api"
-        }
+        "enabled": true
       },
       "memory-core": {
         "enabled": false
@@ -243,35 +48,158 @@ Edit `~/.openclaw/openclaw.json`:
 }
 ```
 
-For self-hosted:
+### 3. Restart Gateway
+
+```bash
+openclaw gateway restart
+```
+
+### 4. Start Chatting
+
+Your AI now remembers! Try:
+
+- "Remember that I prefer dark mode"
+- "What do you know about my work?"
+- "My birthday is next Tuesday, remind me"
+
+## How It Works
+
+### Automatic Memory Capture
+
+Every conversation is automatically analyzed and important information is stored:
+
+```
+You: "I work at Google in Mountain View"
+AI:  [Stores: User works at Google, User is located in Mountain View]
+```
+
+### Smart Recall
+
+Before each response, relevant memories are injected as context:
+
+```
+You: "What's my work schedule?"
+AI:  [Recalls: User works at Google, User mentioned 9-5 schedule]
+     "Based on what you told me, you work 9-5 at Google..."
+```
+
+### LLM-Powered Tools
+
+The AI can actively manage memories:
+
+| Tool | What It Does |
+|------|--------------|
+| `memoryx_recall` | Search for specific memories |
+| `memoryx_store` | Save important information |
+| `memoryx_list` | Show all stored memories |
+| `memoryx_forget` | Delete a memory |
+
+## Self-Hosted Deployment
+
+### Docker Compose
+
+```yaml
+version: '3.8'
+services:
+  memoryx-api:
+    image: ghcr.io/t0ken-ai/memoryx-api:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://memoryx:password@postgres:5432/memoryx
+      - REDIS_URL=redis://redis:6379/0
+      - QDRANT_HOST=qdrant
+      - NEO4J_URI=bolt://neo4j:7687
+    depends_on: [postgres, redis, qdrant, neo4j]
+
+  memoryx-celery:
+    image: ghcr.io/t0ken-ai/memoryx-api:latest
+    command: celery -A app.core.celery_config worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://memoryx:password@postgres:5432/memoryx
+      - REDIS_URL=redis://redis:6379/0
+      - QDRANT_HOST=qdrant
+      - NEO4J_URI=bolt://neo4j:7687
+    depends_on: [postgres, redis]
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: memoryx
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: memoryx
+
+  redis:
+    image: redis:7-alpine
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports: ["6333:6333"]
+
+  neo4j:
+    image: neo4j:5-community
+    ports: ["7474:7474", "7687:7687"]
+    environment:
+      NEO4J_AUTH: neo4j/password
+```
+
+### Configure for Self-Hosted
 
 ```json
 {
-  "apiBaseUrl": "http://192.168.31.65:8000/api"
+  "plugins": {
+    "entries": {
+      "memoryx-openclaw-plugin": {
+        "enabled": true,
+        "config": {
+          "apiBaseUrl": "http://your-server:8000/api"
+        }
+      }
+    }
+  }
 }
 ```
 
-## Project Structure
+## API Reference
 
+### Cloud API
+
+Base URL: `https://t0ken.ai/api`
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /v1/memories` | Store a memory |
+| `POST /v1/memories/search` | Search memories |
+| `GET /v1/memories` | List all memories |
+| `DELETE /v1/memories/{id}` | Delete a memory |
+| `POST /v1/conversations/flush` | Process conversation |
+
+### Authentication
+
+All requests require an API key:
+
+```bash
+curl -X POST https://t0ken.ai/api/v1/memories \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "User prefers dark mode"}'
 ```
-MemoryX/
-├── api/
-│   ├── app/
-│   │   ├── routers/          # API endpoints
-│   │   ├── services/
-│   │   │   └── memory_core/  # Core memory logic
-│   │   │       ├── graph_memory_service.py  # Main service
-│   │   │       ├── classification.py        # LLM classification
-│   │   │       ├── scoring.py               # Result ranking
-│   │   │       └── temporal_kg.py           # Time-based queries
-│   │   ├── core/             # Config, database, celery
-│   │   └── models/           # SQLAlchemy models
-│   └── requirements.txt
-├── plugins/
-│   └── memoryx-openclaw-plugin/  # OpenClaw integration
-├── sdk/                       # Python SDK (t0ken-memoryx)
-└── docs/                      # Documentation
-```
+
+## Pricing
+
+| Plan | Memories/Month | Price |
+|------|----------------|-------|
+| Free | 100 | $0 |
+| Pro | Unlimited | $9/mo |
+
+Self-hosted is free and unlimited.
+
+## Links
+
+- **Website**: [t0ken.ai](https://t0ken.ai)
+- **Documentation**: [docs.t0ken.ai](https://docs.t0ken.ai)
+- **GitHub**: [github.com/t0ken-ai/MemoryX](https://github.com/t0ken-ai/MemoryX)
+- **Discord**: [Join our community](https://discord.gg/t0ken)
 
 ## License
 
