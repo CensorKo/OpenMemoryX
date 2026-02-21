@@ -86,7 +86,7 @@ def get_current_user_with_quota(
     
     quota = get_or_create_quota(db, user.id)
     
-    return user.id, user.subscription_tier, quota, api_key.id
+    return user.id, user.subscription_tier, quota, api_key
 
 
 @router.post("/memories", response_model=dict)
@@ -101,14 +101,14 @@ async def create_memory(
     记忆添加操作通过 Celery 队列异步处理，防止 LLM 被打爆。
     返回 task_id 可用于查询处理状态。
     """
-    user_id, tier, quota, api_key_id = user_data
+    user_id, tier, quota, api_key = user_data
     
     metadata = memory.metadata or {}
     metadata["project_id"] = memory.project_id
     
     queue = get_queue_for_tier(tier)
     task = add_memory_task.apply_async(
-        args=[str(user_id), memory.content, metadata, False, api_key_id],
+        args=[str(user_id), memory.content, metadata, False, api_key.id],
         queue=queue
     )
     
@@ -134,7 +134,7 @@ async def batch_create_memories(
     批量记忆添加操作通过 Celery 队列异步处理。
     返回 task_id 可用于查询处理状态。
     """
-    user_id, tier, quota, api_key_id = user_data
+    user_id, tier, quota, api_key = user_data
     
     if len(batch.memories) == 0:
         raise HTTPException(status_code=400, detail="No memories provided")
@@ -150,7 +150,7 @@ async def batch_create_memories(
     
     queue = get_queue_for_tier(tier)
     task = batch_add_memory_task.apply_async(
-        args=[str(user_id), contents, metadatas, api_key_id],
+        args=[str(user_id), contents, metadatas, api_key.id],
         queue=queue
     )
     
@@ -247,9 +247,10 @@ async def search_memories(
     
     can_search, remaining = quota.can_cloud_search(tier)
     if not can_search:
+        claim_url = f"https://t0ken.ai/portal/?claim={api_key.api_key}"
         raise HTTPException(
             status_code=402,
-            detail=f"Cloud search quota exhausted ({QUOTA_LIMITS[tier]['cloud_search_per_month']}/month). Upgrade to Pro for unlimited searches."
+            detail=f"Daily search quota exhausted. Visit {claim_url} to link your account and upgrade to PRO for unlimited searches."
         )
     
     try:
@@ -291,9 +292,10 @@ async def search_graph(
     
     can_search, remaining = quota.can_cloud_search(tier)
     if not can_search:
+        claim_url = f"https://t0ken.ai/portal/?claim={api_key.api_key}"
         raise HTTPException(
             status_code=402,
-            detail="Cloud search quota exhausted"
+            detail=f"Daily search quota exhausted. Visit {claim_url} to link your account and upgrade to PRO for unlimited searches."
         )
     
     try:
